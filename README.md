@@ -23,13 +23,13 @@ R project that contains a suite of data and R programs for summarizing and prese
   4. /Stomachs
 
 /R Markdown
-1. wordstyles.docx"
-2. RVCAT_report.docx"
-3. RVCAT_report.Rmd"
-4. RVCAT_species_summaries.docx"
-5. RVCAT_species_summaries.Rmd"
-6. RVCAT_station_descriptions.docx"
-7. RVCAT_station_descriptions.Rmd"
+1. wordstyles.docx
+2. RVCAT_report.docx
+3. RVCAT_report.Rmd
+4. RVCAT_species_summaries.docx
+5. RVCAT_species_summaries.Rmd
+6. RVCAT_station_descriptions.docx
+7. RVCAT_station_descriptions.Rmd
 
 /R Scripts
 1. Stomachs.R
