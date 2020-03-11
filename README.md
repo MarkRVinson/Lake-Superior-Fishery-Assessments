@@ -3,16 +3,16 @@ R project that contains a suite of data and R programs for summarizing and prese
 
 ## Directories
 /Data
-RVCAT.csv
-Site_Names.xlsx
-Species_Taxonomy.xlsx
-Table_of_Contents.xlsx
-trawl_constants_by_vessel.xlsx
-LENGTHS_RVCAT.csv
-LS_GLERL_Ice.csv
-LS_WTMP_fromTaylor.xlsx
-LSBS_BTdata.xlsx
-LSBS_Stomach_Contents.xlsx
+  1. RVCAT.csv, Excel file containing all the fish catch and effort data. File is created as spool out of RVCAT system.
+  2. Site_Names.xlsx, Excel file with site names, mid-point latitude and longitude, and management unit information
+  3. Species_Taxonomy.xlsx, Excel file with fish species taxonomy
+  4. Table_of_Contents.xlsx
+  5. trawl_constants_by_vessel.xlsx, Excel file with the constants used to calculate area swept for different vessels
+  6. LENGTHS_RVCAT.csv, Excel file containing all fish length data. File is created as spool out of RVCAT system.
+  7. LS_GLERL_Ice.csv, CSV file downloaded from https://www.glerl.noaa.gov/data/ice/#historical
+  8. LS_WTMP_fromTaylor.xlsx, Taylor Stewart data downloaded from NASA
+  9. LSBS_BTdata.xlsx, Excel file containing all the Lake Superior Biological Station's electronic water profile data. The modern bathythermograph data. Contains records from 1991-present. File is from an Excel file that is created by cutting and pasting the bathythermograph data from individual BT cast files to the Excel file.
+  10. LSBS_Stomach_Contents.xlsx, Excel file with 
 
 /Data/shapefiles - Shape files of Lake Superior for constructing maps
 
@@ -25,9 +25,9 @@ LSBS_Stomach_Contents.xlsx
 
 Data files
 Data input files
-RVCAT.xlsx -- Excel file containing all the fish catch and effort data. File is created as spool out of RVCAT system.
-LSBS_BTdata.xlsx -- Excel file containing all the Lake Superior Biological Station's electronic water profile data. The modern bathythermograph data. Contains records from 1991-present. File is from an Excel file that is created by cutting and pasting the bathythermograph data from individual BT cast files to the Excel file.
-LENGTHS_RVCAT.xlsx -- Excel file containing all fish length data. File is created as spool out of RVCAT system.
+RVCAT.xlsx -- 
+LSBS_BTdata.xlsx -- 
+LENGTHS_RVCAT.xlsx -- 
 Data supporting files
 Species_Taxonomy.xlsx -- Excel file containing fish taxonomic information
 trawl_constants_by_vessel.xlsx -- the constant data to convert fish catch data, counts or biomass, from bottom trawls into density estimates. Number or weight of fish per hectare. Includes information for all vessels used by the Lake Superior Biological Station over time.
