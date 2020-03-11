@@ -1,23 +1,26 @@
 # RVCAT
 R project that contains a suite of data and R programs for summarizing and presenting RVCAT data for Lake Superior
 
-Directories
+## Directories
 /Data
-RVCAT.csv"
-Site_Names.xlsx"
-Species_Taxonomy.xlsx"
-Table_of_Contents.xlsx"
-trawl_constants_by_vessel.xlsx"
-LENGTHS_RVCAT.csv"
-LS_GLERL_Ice.csv"
-LS_WTMP_fromTaylor.xlsx"
-LSBS_BTdata.xlsx"
-LSBS_Stomach_Contents.xlsx"
+RVCAT.csv
+Site_Names.xlsx
+Species_Taxonomy.xlsx
+Table_of_Contents.xlsx
+trawl_constants_by_vessel.xlsx
+LENGTHS_RVCAT.csv
+LS_GLERL_Ice.csv
+LS_WTMP_fromTaylor.xlsx
+LSBS_BTdata.xlsx
+LSBS_Stomach_Contents.xlsx
 
 /Data/shapefiles - Shape files of Lake Superior for constructing maps
 
 /Plots and Tables -- where the created tables and plots are stored
-
+  1. /Ice_Temp
+  2. /Lengths
+  3. /RVCAT
+  4. /Stomachs
 
 
 Data files
