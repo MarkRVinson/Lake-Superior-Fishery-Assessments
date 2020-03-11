@@ -1,0 +1,2259 @@
+---
+output:
+  word_document:
+    reference_docx: wordstyles.docx
+  pdf_document:
+    fig_caption: yes
+---
+
+```{r setup, results='hide', echo=FALSE, message=FALSE, warning=FALSE}
+
+library(rmarkdown)
+library(tinytex)
+library(knitr)
+library(tidyverse)
+library(doBy)
+library(readxl)
+library(ggplot2)
+library(plotrix)
+library(psych)
+library(rlang)
+library(dplyr)
+library(purrr)
+library(forcats)
+library(viridis)
+library(reshape)
+library(rgdal)
+library(xlsx)
+library(lubridate)
+library(plyr)
+library(gganimate)
+library(magick)
+library(grid)
+library(ggforce)
+library(kableExtra)
+library(png)
+library(ggridges)
+library(gridExtra)
+library(scales)
+library(here)
+
+##load the raw RVCAT data file
+##NOTE: this code is designed to process the ENTIRE RVCAT output, you can subset out target codes, species, years, etc later
+##you DO NOT need to spool off a specialized RVCAT file with just the data you want to analyze
+raw.data<-read.csv(here('Data','RVCAT.csv'))
+raw.data$SPECIES<-as.factor(raw.data$SPECIES)
+
+##change date format into usable form
+raw.data$OP_DATE<-as.character(raw.data$OP_DATE)
+raw.data$OP_DATE<-parse_date(raw.data$OP_DATE, format='%d-%b-%y')
+
+raw.data[is.na(raw.data[,"END_LATITUDE_DD"]), "END_LATITUDE_DD"] <- raw.data[is.na(raw.data[, "END_LATITUDE_DD"]),"BEG_LATITUDE_DD"]
+raw.data[is.na(raw.data[,"BEG_LATITUDE_DD"]), "BEG_LATITUDE_DD"] <- raw.data[is.na(raw.data[, "BEG_LATITUDE_DD"]),"END_LATITUDE_DD"]
+
+raw.data[is.na(raw.data[,"END_LONGITUDE_DD"]), "END_LONGITUDE_DD"] <- raw.data[is.na(raw.data[, "END_LONGITUDE_DD"]),"BEG_LONGITUDE_DD"]
+raw.data[is.na(raw.data[,"BEG_LONGITUDE_DD"]), "BEG_LONGITUDE_DD"] <- raw.data[is.na(raw.data[, "BEG_LONGITUDE_DD"]),"END_LONGITUDE_DD"]
+
+raw.data$Mid.Lat.DD<-(raw.data$BEG_LATITUDE_DD+raw.data$END_LATITUDE_DD)/2
+raw.data$Mid.Long.DD<-(raw.data$BEG_LONGITUDE_DD+raw.data$END_LONGITUDE_DD)/2
+
+##load the species names file for when needed
+codes.to.names<-read_xlsx(here('Data','Species_Taxonomy.xlsx'))
+sci.names<-select(codes.to.names, c(2:4))
+
+##set default themes for all plots and maps, you can tweak these on individual plots if necessary by including other calls to theme()
+map_theme<-theme(axis.text=element_text(size=20, family='serif'), 
+            axis.title=element_text(size=20, family='serif'), 
+            plot.title=element_text(size=24, family='serif'),
+            plot.subtitle=element_text(size=18, family='serif'),
+            plot.caption=element_text(size=16, family='serif'), 
+            legend.position=c(0.08,0.7),
+            legend.text=element_text(size=16, family='serif'))
+
+plot_theme<-theme(axis.line=element_line(size=1, color='black'),
+                  panel.background = element_rect(NA),
+                  axis.text=element_text(size=20, family='serif'),
+                  axis.title=element_text(size=20, family='serif'),
+                  plot.margin = margin(.5,.5,.5,.5,"cm"),
+                  legend.text=element_text(size=16, family='serif'),
+                  axis.ticks=element_line(size=1, color='black'),
+                  plot.title=element_text(size=24, family='serif'),
+                  plot.subtitle=element_text(size=16, family='serif'),
+                  plot.caption=element_text(size=16, family='serif'),
+                  legend.background = element_blank(),
+                  legend.key = element_blank(),
+                  strip.text=element_text(size=16, family='serif'))
+
+
+ann_data_access<-'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0' ##change these each year to the updated link
+ann_data_access2<-'doi.org/10.5066/F75M63X0'
+##to calculate NOHA and KGHA, need to subset out different vessels, as they have different conversion factors for area sampled
+
+##r/v siscowet from start to 1976 **note, conversion factor only verified from 1973-1976, an estimate for years prior
+siscowet76<-subset(raw.data, VESSEL==1 & YEAR<1977)
+siscowet76$NOHA<-((siscowet76$NUM*60)/siscowet76$TOW_TIME)/2.01
+siscowet76$KGHA<-((siscowet76$WT*.06)/siscowet76$TOW_TIME)/2.01
+siscowet76$HA_SWEPT<-(siscowet76$TOW_TIME/60)*2.01
+
+##r/v siscowet from 1977-1999
+siscowet77.99<-subset(raw.data, VESSEL==1 & YEAR>1976 & YEAR<2000)
+siscowet77.99$NOHA<-((siscowet77.99$NUM*60)/siscowet77.99$TOW_TIME)/2.45
+siscowet77.99$KGHA<-((siscowet77.99$WT*.06)/siscowet77.99$TOW_TIME)/2.45
+siscowet77.99$HA_SWEPT<-(siscowet77.99$TOW_TIME/60)*2.45
+
+##r/v grayling 1973-1999 (all years)
+grayling<-subset(raw.data, VESSEL==11)
+grayling$NOHA<-((grayling$NUM*60)/grayling$TOW_TIME)/2.05
+grayling$KGHA<-((grayling$WT*.06)/grayling$TOW_TIME)/2.05
+grayling$HA_SWEPT<-(grayling$TOW_TIME/60)*2.05
+
+##r/v coaster, USGS, 1993 serials 1-120
+coaster93<-subset(raw.data, VESSEL==99 & YEAR==1993 & SERIAL<121)
+coaster93$NOHA<-((coaster93$NUM*60)/coaster93$TOW_TIME)/.6097
+coaster93$KGHA<-((coaster93$WT*.06)/coaster93$TOW_TIME)/.6097
+coaster93$HA_SWEPT<-(coaster93$TOW_TIME/60)*.6097
+
+##r/v coaster, USGS, 1988-1992 and 1994-2004  and 1993 serials>120
+coasterUSGS1<-subset(raw.data, VESSEL==99 & YEAR<1993)
+coasterUSGS2<-subset(raw.data, VESSEL==99 & YEAR>1993)
+coasterUSGS3<-subset(raw.data, VESSEL==99 & YEAR==1993 & SERIAL>120)
+coasterUSGS<-rbind(coasterUSGS1, coasterUSGS2, coasterUSGS3)
+coasterUSGS$NOHA<-((coasterUSGS$NUM*60)/coasterUSGS$TOW_TIME)/.785
+coasterUSGS$KGHA<-((coasterUSGS$WT*.06)/coasterUSGS$TOW_TIME)/.785
+coasterUSGS$HA_SWEPT<-(coasterUSGS$TOW_TIME/60)*.785
+
+##r/v coaster/shoveler USFWS 2009 (calling it shoveler to differentiate from coaster above)
+shoveler<-subset(raw.data, VESSEL==95)
+shoveler$NOHA<-(shoveler$NUM/(((shoveler$DISTANCE*5280)*14.76)/107639.1))
+shoveler$KGHA<-(shoveler$WT*.001/(((shoveler$DISTANCE*5280)*14.76)/107639.1))
+shoveler$HA_SWEPT<-((shoveler$DISTANCE*5280)*14.76)/107639.1
+
+##r/v whitefish
+whitefish<-subset(raw.data, VESSEL==50)
+whitefish$NOHA<-((whitefish$NUM*60)/whitefish$TOW_TIME)/1.174
+whitefish$KGHA<-((whitefish$WT*.06)/whitefish$TOW_TIME)/1.174
+whitefish$HA_SWEPT<-(whitefish$TOW_TIME/60)*1.174
+
+##johnboat
+johnboat<-subset(raw.data, VESSEL==92)
+johnboat$NOHA<-((johnboat$NUM*60)/johnboat$TOW_TIME)/.6568
+johnboat$KGHA<-((johnboat$WT*.06)/johnboat$TOW_TIME)/.6568
+johnboat$HA_SWEPT<-(johnboat$TOW_TIME/60)*.6568
+
+##r/v kaho **note, don't have a conversion factor for this ship yet, using the conversion factor for the siscowet for now
+kaho<-subset(raw.data, VESSEL==4)
+kaho$NOHA<-((kaho$NUM*60)/kaho$TOW_TIME)/2.45
+kaho$KGHA<-((kaho$WT*.06)/kaho$TOW_TIME)/2.45
+kaho$HA_SWEPT<-(kaho$TOW_TIME/60)*2.45
+
+##r/v kiyi
+kiyi<-subset(raw.data, VESSEL==25)
+kiyi$NOHA<-(kiyi$NUM/(((kiyi$DISTANCE*5280)*25.49)/107639.1))
+kiyi$KGHA<-(kiyi$WT*.001/(((kiyi$DISTANCE*5280)*25.49)/107639.1))
+kiyi$HA_SWEPT<-(((kiyi$DISTANCE*5280)*25.49)/107639.1)
+
+##Daphnia **note, no bottom trawls done off this ship, so doesn't have all the same data as the other vessels
+daphnia<-subset(raw.data, VESSEL==9)
+daphnia$NOHA<-NA
+daphnia$KGHA<-NA
+daphnia$HA_SWEPT<-NA
+
+##bind all data frames together now that they have NOHA and KGHA
+all.data<-rbind(kiyi, siscowet76, siscowet77.99, grayling, coaster93, coasterUSGS, whitefish, johnboat, kaho, shoveler, daphnia)
+all.data$STATE<-as.character(all.data$STATE)
+##check that the number of rows in all.data matches the number in the raw.data input to make sure no data got lost along the way
+##if data were lost, were any additional vessels used that are not listed above? any vessel codes changed or recorded incorrectly?
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+##summarize nearshore data ****using fish biomass
+ns<-subset(all.data, TARGET==2 & YEAR>1977)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum<-aggregate(ns$KGHA, by=list(YEAR=ns$YEAR, Station=ns$LOCATION), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+
+os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)
+os.ann.station.sum<-aggregate(os$KGHA, by=list(YEAR=os$YEAR, Station=os$LOCATION,
+                                               BEG_LONGITUDE_DD=os$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+##age-1 calculations
+lengths<-read.csv(here('Data','LENGTHS_RVCAT.csv'))
+op.id.details<-select(all.data, c(1,2,5,8,11,17,36))
+lengths2<-merge.data.frame(lengths, op.id.details, by='OP_ID', all=F)
+lengths3<-unique(lengths2)
+
+
+##subset age 1 fish by species. use nearshore catches for all species except kiyi
+rbs.a1<-lengths3%>%
+  group_by(YEAR)%>%
+  filter(SPECIES==109)%>%
+  filter(LENGTH<101)%>%
+  filter(TARGET==2)
+cisco.a1<-lengths3%>%
+  group_by(YEAR)%>%
+  filter(SPECIES==202)%>%
+  filter(LENGTH<141)%>%
+  filter(TARGET==2)
+bloater.a1<-lengths3%>%
+  group_by(YEAR)%>%
+  filter(SPECIES==204)%>%
+  filter(LENGTH<131)%>%
+  filter(TARGET==2)
+kiyi.a1<-lengths3%>%
+  group_by(YEAR)%>%
+  filter(SPECIES==206)%>%
+  filter(LENGTH<131)%>%
+  filter(TARGET==118|TARGET==117)%>%
+  filter(END_DEPTH>84)
+siscowet.a1<-lengths3%>%
+  group_by(YEAR)%>%
+  filter(SPECIES==308)%>%
+  filter(LENGTH<226)%>%
+  filter(TARGET==2)
+lean.a1<-lengths3%>%
+  group_by(YEAR)%>%
+  filter(SPECIES==317)%>%
+  filter(LENGTH<226)%>%
+  filter(TARGET==2)
+lwf.a1<-lengths3%>%
+  group_by(YEAR)%>%
+  filter(SPECIES==203)%>%
+  filter(LENGTH<161)%>%
+  filter(TARGET==2)
+
+age1<-rbind(rbs.a1, cisco.a1, bloater.a1, siscowet.a1, lean.a1, lwf.a1) ##bind all species evaluated using nearshore data
+##need to process kiyi separate from the nearshore species so you can cast in zeros for nearshore sites where age 1 fish were not caught
+age1.station.sum<-aggregate(age1$EXP_N, by=list(YEAR=age1$YEAR, LOCATION=age1$LOCATION, SPECIES=age1$SPECIES,
+                                                HA_SWEPT=age1$HA_SWEPT), FUN=sum)%>%
+  renameCol('x','N.Age1')
+
+ns<-subset(all.data, TARGET==2 & YEAR>1976)
+##need to cast in sites where no fish of that species were caught
+##to do this, need to figure out which sites were sampled each year
+ns.sites.byyear<-ns%>%
+  group_by(YEAR)%>%
+  distinct(LOCATION)
+ns.sites.byyear$SITECHECK<-'SURVEYED'
+os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)
+##need to cast in sites where no fish of that species were caught
+##to do this, need to figure out which sites were sampled each year. offshore=for kiyi calculations
+os.sites.byyear<-os%>%
+  group_by(YEAR)%>%
+  distinct(LOCATION)
+os.sites.byyear$SITECHECK<-'SURVEYED'
+
+age1.station.sum<-merge.data.frame(age1.station.sum, ns.sites.byyear, all=T)
+age1.station.sum$NOHA<-age1.station.sum$N.Age1/age1.station.sum$HA_SWEPT
+age1.cast<-cast(age1.station.sum, YEAR+LOCATION~SPECIES, value='NOHA', fun.aggregate = 'mean')
+age1.cast[is.na(age1.cast)]<-0
+age1.cast<-select(age1.cast, c(1:8))
+age1.cast<-melt(age1.cast, id=c('YEAR', 'LOCATION')) ##use this file later to map species densities
+age1.ann.mean<-aggregate(age1.cast$value, by=list(Year=age1.cast$YEAR, SPECIES=age1.cast$SPECIES), FUN=mean)%>%
+  renameCol('x','Mean.NOHA')
+
+##now calculate kiyi (and any other offshore fishes if added later)
+kiyi.a1<-aggregate(kiyi.a1$EXP_N,  by=list(YEAR=kiyi.a1$YEAR, LOCATION=kiyi.a1$LOCATION, SPECIES=kiyi.a1$SPECIES,
+                                          HA_SWEPT=kiyi.a1$HA_SWEPT), FUN=sum)%>%
+  renameCol('x','N.Age1')
+kiyi.a1<-merge.data.frame(kiyi.a1, os.sites.byyear, all=T)
+kiyi.a1$NOHA<-kiyi.a1$N.Age1/kiyi.a1$HA_SWEPT
+kiyi.age1.cast<-cast(kiyi.a1, YEAR+LOCATION~SPECIES, value='NOHA', fun.aggregate = 'mean')
+kiyi.age1.cast[is.na(kiyi.age1.cast)]<-0
+kiyi.age1.cast<-select(kiyi.age1.cast, c(1:3))
+kiyi.age1.cast<-melt(kiyi.age1.cast, id=c('YEAR', 'LOCATION'))
+
+kiyi.a1.ann.mean<-aggregate(kiyi.age1.cast$value, by=list(Year=kiyi.age1.cast$YEAR, SPECIES=kiyi.age1.cast$SPECIES), FUN=mean)%>%
+  renameCol('x','Mean.NOHA')
+
+##bind together nearshore and offshore calculations and format for table export 
+age1.ann.mean<-rbind(age1.ann.mean, kiyi.a1.ann.mean)
+age1.ann.mean<-merge.data.frame(age1.ann.mean, sci.names, all=F)%>%
+  select(c(2,3,4))
+age1.ann.mean2<-cast(age1.ann.mean, Year~COMMON_NAME, value='Mean.NOHA')
+age1.ann.mean2$'Year Class'<-age1.ann.mean2$Year-1
+  
+age1.table<-select(age1.ann.mean2, c('Year','Year Class','Rainbow Smelt','Cisco','Bloater','Lake Whitefish','Kiyi','lean Lake Trout',
+                                     'siscowet Lake Trout')) ##if any spp added in future, select them in the order you want here
+age1.table<-round(age1.table, 2) ##if you want more or less decimal places, adjust the numeric value here to the number you want
+age1.table<-age1.table%>%
+  filter(Year>1977) ##select the most recent 40 years, or whatever time period is desired
+age1.table[is.na(age1.table)]<-'N/A' ##kiyi will have N/A values for years prior to the start of the offshore cruise (2011)
+
+age1.table<-age1.table %>% dplyr::rename_all(funs(make.names(.)))
+age1.table$Kiyi<-as.numeric(as.character(age1.table$Kiyi))
+
+age1.maxyr<-subset(age1.table, Year==max(Year))
+
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Bloater
+##summarize nearshore data
+
+ns.bloat<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==204)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.bloat<-aggregate(ns.bloat$KGHA, by=list(YEAR=ns.bloat$YEAR, Station=ns.bloat$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.bloat$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.bloat$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.sites.byyear<-renameCol(ns.sites.byyear, 'LOCATION', 'Station')
+ns.ann.station.sum.bloat<-merge.data.frame(ns.ann.station.sum.bloat, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.bloat[c('StationKGHA')][is.na(ns.ann.station.sum.bloat[c('StationKGHA')])]<-0
+
+os.bloat<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==204)
+os.ann.station.sum.bloat<-aggregate(os.bloat$KGHA, by=list(YEAR=os.bloat$YEAR, Station=os.bloat$LOCATION,
+                                               BEG_LONGITUDE_DD=os.bloat$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.bloat$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.sites.byyear<-renameCol(os.sites.byyear, 'LOCATION', 'Station')
+os.ann.station.sum.bloat<-merge.data.frame(os.ann.station.sum.bloat, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.bloat[c('StationKGHA')][is.na(os.ann.station.sum.bloat[c('StationKGHA')])]<-0
+
+
+bloater<-rbind(ns.ann.station.sum.bloat, os.ann.station.sum.bloat)
+bloater.mean<-aggregate(bloater$StationKGHA, by=list(Station=bloater$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+site.names<-read_excel(here('Data','Site_Names.xlsx'), sheet='Names')
+site.names<-select(site.names, c('Station','DD_LATITUDE','DD_LONGITUDE'))
+
+bloater.mean<-merge.data.frame(bloater.mean, site.names, all=F)
+bloater.ns.mean<-aggregate(ns.ann.station.sum.bloat$StationKGHA, by=list(Year=ns.ann.station.sum.bloat$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "lake_superior")
+ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
+ls_poly.fort <- fortify(ls_poly)
+
+ns.os.bloat2<-rbind(ns.bloat, os.bloat)
+ns.os.bloat<-ns.os.bloat2%>%
+  tidyr::uncount(NUM)
+ns.os.bloat$Temp_avg_bottom<-(ns.os.bloat$TEMP_BEG_BOTTOM+ns.os.bloat$TEMP_END_BOTTOM)/2
+```
+
+**Bloater**
+*Coregonus hoyi*
+
+Most caught at a single site: `r max(ns.os.bloat2$NUM)` ~ Total collected all years: `r sum(ns.os.bloat2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bloater.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=bloater.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, echo=FALSE}
+##load data used for lengths
+lengthfreq<-read.csv(here('Data','LENGTHS_RVCAT.csv'))
+lengthfreq<-subset(lengthfreq, YEAR>(max(lengthfreq$YEAR)-5))
+lengthfreq[is.na(lengthfreq)]<-1
+lengthfreq$EXP_N<-round(lengthfreq$EXP_N,0)
+
+lengthfreq<-lengthfreq%>%
+  uncount(EXP_N)
+
+bloater10<-subset(lengthfreq, SPECIES=='204')
+```
+
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(bloater.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(bloater10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  facet_grid(YEAR~.)+
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))+
+  geom_vline(xintercept=130, linetype='dashed')
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.bloat, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.bloat, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Cisco
+##summarize nearshore data
+
+ns.cisco<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==202)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.cisco<-aggregate(ns.cisco$KGHA, by=list(YEAR=ns.cisco$YEAR, Station=ns.cisco$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.cisco$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.cisco$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.cisco<-merge.data.frame(ns.ann.station.sum.cisco, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.cisco[c('StationKGHA')][is.na(ns.ann.station.sum.cisco[c('StationKGHA')])]<-0
+
+os.cisco<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==202)
+os.ann.station.sum.cisco<-aggregate(os.cisco$KGHA, by=list(YEAR=os.cisco$YEAR, Station=os.cisco$LOCATION,
+                                               BEG_LONGITUDE_DD=os.cisco$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.cisco$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.cisco<-merge.data.frame(os.ann.station.sum.cisco, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.cisco[c('StationKGHA')][is.na(os.ann.station.sum.cisco[c('StationKGHA')])]<-0
+
+
+cisco<-rbind(ns.ann.station.sum.cisco, os.ann.station.sum.cisco)
+cisco.mean<-aggregate(cisco$StationKGHA, by=list(Station=cisco$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+cisco.mean<-merge.data.frame(cisco.mean, site.names, all=F)
+cisco.ns.mean<-aggregate(ns.ann.station.sum.cisco$StationKGHA, by=list(Year=ns.ann.station.sum.cisco$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+cisco10<-subset(lengthfreq, SPECIES=='202')
+
+ns.os.cisco2<-rbind(ns.cisco, os.cisco)
+ns.os.cisco<-ns.os.cisco2%>%
+  tidyr::uncount(NUM)
+ns.os.cisco$Temp_avg_bottom<-(ns.os.cisco$TEMP_BEG_BOTTOM+ns.os.cisco$TEMP_END_BOTTOM)/2
+```
+
+**Cisco (Lake Herring)**
+*Coregonus artedi*
+
+Most caught at a single site: `r max(ns.os.cisco2$NUM)` ~ Total collected all years: `r sum(ns.os.cisco2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(cisco.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=cisco.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(cisco.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(cisco10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))+
+  geom_vline(xintercept=140, linetype='dashed')
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.cisco, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.cisco, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Kiyi
+##summarize nearshore data
+
+ns.kiyi<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==206)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.kiyi<-aggregate(ns.kiyi$KGHA, by=list(YEAR=ns.kiyi$YEAR, Station=ns.kiyi$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.kiyi$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.kiyi$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.kiyi<-merge.data.frame(ns.ann.station.sum.kiyi, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.kiyi[c('StationKGHA')][is.na(ns.ann.station.sum.kiyi[c('StationKGHA')])]<-0
+
+os.kiyi<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==206)
+os.ann.station.sum.kiyi<-aggregate(os.kiyi$KGHA, by=list(YEAR=os.kiyi$YEAR, Station=os.kiyi$LOCATION,
+                                               BEG_LONGITUDE_DD=os.kiyi$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.kiyi$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.kiyi<-merge.data.frame(os.ann.station.sum.kiyi, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.kiyi[c('StationKGHA')][is.na(os.ann.station.sum.kiyi[c('StationKGHA')])]<-0
+
+
+kiyi<-rbind(ns.ann.station.sum.kiyi, os.ann.station.sum.kiyi)
+kiyi.mean<-aggregate(kiyi$StationKGHA, by=list(Station=kiyi$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+kiyi.mean<-merge.data.frame(kiyi.mean, site.names, all=F)
+kiyi.os.mean<-aggregate(os.ann.station.sum.kiyi$StationKGHA, by=list(Year=os.ann.station.sum.kiyi$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+kiyi10<-subset(lengthfreq, SPECIES=='206')
+
+ns.os.kiyi2<-rbind(ns.kiyi, os.kiyi)
+ns.os.kiyi<-ns.os.kiyi2%>%
+  tidyr::uncount(NUM)
+ns.os.kiyi$Temp_avg_bottom<-(ns.os.kiyi$TEMP_BEG_BOTTOM+ns.os.kiyi$TEMP_END_BOTTOM)/2
+```
+
+    
+**Kiyi**
+*Coregonus kiyi*
+
+Most caught at a single site: `r max(ns.os.kiyi2$NUM)` ~ Total collected all years: `r sum(ns.os.kiyi2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(kiyi.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=kiyi.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(kiyi.os.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Offshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_x_continuous(breaks=pretty_breaks())+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(kiyi10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))+
+  geom_vline(xintercept=130, linetype='dashed')
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.kiyi, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency',title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.kiyi, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Rainbow Smelt
+##summarize nearshore data
+
+ns.smelt<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==109)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.smelt<-aggregate(ns.smelt$KGHA, by=list(YEAR=ns.smelt$YEAR, Station=ns.smelt$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.smelt$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.smelt$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.smelt<-merge.data.frame(ns.ann.station.sum.smelt, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.smelt[c('StationKGHA')][is.na(ns.ann.station.sum.smelt[c('StationKGHA')])]<-0
+
+os.smelt<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==109)
+os.ann.station.sum.smelt<-aggregate(os.smelt$KGHA, by=list(YEAR=os.smelt$YEAR, Station=os.smelt$LOCATION,
+                                               BEG_LONGITUDE_DD=os.smelt$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.smelt$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.smelt<-merge.data.frame(os.ann.station.sum.smelt, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.smelt[c('StationKGHA')][is.na(os.ann.station.sum.smelt[c('StationKGHA')])]<-0
+
+
+smelt<-rbind(ns.ann.station.sum.smelt, os.ann.station.sum.smelt)
+smelt.mean<-aggregate(smelt$StationKGHA, by=list(Station=smelt$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+smelt.mean<-merge.data.frame(smelt.mean, site.names, all=F)
+smelt.ns.mean<-aggregate(ns.ann.station.sum.smelt$StationKGHA, by=list(Year=ns.ann.station.sum.smelt$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+smelt10<-subset(lengthfreq, SPECIES=='109')
+
+ns.os.smelt2<-rbind(ns.smelt, os.smelt)
+ns.os.smelt<-ns.os.smelt2%>%
+  tidyr::uncount(NUM)
+ns.os.smelt$Temp_avg_bottom<-(ns.os.smelt$TEMP_BEG_BOTTOM+ns.os.smelt$TEMP_END_BOTTOM)/2
+```
+
+**Rainbow Smelt**
+*Osmerus mordax*
+
+Most caught at a single site: `r max(ns.os.smelt2$NUM)` ~ Total collected all years: `r sum(ns.os.smelt2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(smelt.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=smelt.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(smelt.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(smelt10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))+
+  geom_vline(xintercept=100, linetype='dashed')
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.smelt, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.smelt, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Lake Whitefish
+##summarize nearshore data
+
+ns.lwf<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==203)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.lwf<-aggregate(ns.lwf$KGHA, by=list(YEAR=ns.lwf$YEAR, Station=ns.lwf$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.lwf$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.lwf$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.lwf<-merge.data.frame(ns.ann.station.sum.lwf, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.lwf[c('StationKGHA')][is.na(ns.ann.station.sum.lwf[c('StationKGHA')])]<-0
+
+os.lwf<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==203)
+os.ann.station.sum.lwf<-aggregate(os.lwf$KGHA, by=list(YEAR=os.lwf$YEAR, Station=os.lwf$LOCATION,
+                                               BEG_LONGITUDE_DD=os.lwf$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.lwf$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.lwf<-merge.data.frame(os.ann.station.sum.lwf, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.lwf[c('StationKGHA')][is.na(os.ann.station.sum.lwf[c('StationKGHA')])]<-0
+
+
+lwf<-rbind(ns.ann.station.sum.lwf, os.ann.station.sum.lwf)
+lwf.mean<-aggregate(lwf$StationKGHA, by=list(Station=lwf$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+lwf.mean<-merge.data.frame(lwf.mean, site.names, all=F)
+lwf.ns.mean<-aggregate(ns.ann.station.sum.lwf$StationKGHA, by=list(Year=ns.ann.station.sum.lwf$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+lwf10<-subset(lengthfreq, SPECIES=='203')
+
+ns.os.lwf2<-rbind(ns.lwf, os.lwf)
+ns.os.lwf<-ns.os.lwf2%>%
+  tidyr::uncount(NUM)
+ns.os.lwf$Temp_avg_bottom<-(ns.os.lwf$TEMP_BEG_BOTTOM+ns.os.lwf$TEMP_END_BOTTOM)/2
+```
+
+**Lake Whitefish**
+*Coregonus clupeaformis*
+
+Most caught at a single site: `r max(ns.os.lwf2$NUM)` ~ Total collected all years: `r sum(ns.os.lwf2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(lwf.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=lwf.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(lwf.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(lwf10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))+
+  geom_vline(xintercept=160, linetype='dashed')
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.lwf, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.lwf, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Lean lake trout
+##summarize nearshore data
+
+ns.llt<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==317)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.llt<-aggregate(ns.llt$KGHA, by=list(YEAR=ns.llt$YEAR, Station=ns.llt$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.llt$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.llt$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.llt<-merge.data.frame(ns.ann.station.sum.llt, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.llt[c('StationKGHA')][is.na(ns.ann.station.sum.llt[c('StationKGHA')])]<-0
+
+os.llt<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==317)
+os.ann.station.sum.llt<-aggregate(os.llt$KGHA, by=list(YEAR=os.llt$YEAR, Station=os.llt$LOCATION,
+                                               BEG_LONGITUDE_DD=os.llt$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.llt$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.llt<-merge.data.frame(os.ann.station.sum.llt, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.llt[c('StationKGHA')][is.na(os.ann.station.sum.llt[c('StationKGHA')])]<-0
+
+
+llt<-rbind(ns.ann.station.sum.llt, os.ann.station.sum.llt)
+llt.mean<-aggregate(llt$StationKGHA, by=list(Station=llt$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+llt.mean<-merge.data.frame(llt.mean, site.names, all=F)
+llt.ns.mean<-aggregate(ns.ann.station.sum.llt$StationKGHA, by=list(Year=ns.ann.station.sum.llt$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+llt10<-subset(lengthfreq, SPECIES=='317')
+
+ns.os.llt2<-rbind(ns.llt, os.llt)
+ns.os.llt<-ns.os.llt2%>%
+  tidyr::uncount(NUM)
+ns.os.llt$Temp_avg_bottom<-(ns.os.llt$TEMP_BEG_BOTTOM+ns.os.llt$TEMP_END_BOTTOM)/2
+```
+
+**lean Lake Trout**
+*Salvelinus namaycush*
+
+Most caught at a single site: `r max(ns.os.llt2$NUM)` ~ Total collected all years: `r sum(ns.os.llt2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(llt.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=llt.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(llt.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(llt10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.llt, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.llt, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##siscowet Lake Trout
+##summarize nearshore data
+
+ns.slt<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==308)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.slt<-aggregate(ns.slt$KGHA, by=list(YEAR=ns.slt$YEAR, Station=ns.slt$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.slt$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.slt$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.slt<-merge.data.frame(ns.ann.station.sum.slt, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.slt[c('StationKGHA')][is.na(ns.ann.station.sum.slt[c('StationKGHA')])]<-0
+
+os.slt<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==308)
+os.ann.station.sum.slt<-aggregate(os.slt$KGHA, by=list(YEAR=os.slt$YEAR, Station=os.slt$LOCATION,
+                                               BEG_LONGITUDE_DD=os.slt$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.slt$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.slt<-merge.data.frame(os.ann.station.sum.slt, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.slt[c('StationKGHA')][is.na(os.ann.station.sum.slt[c('StationKGHA')])]<-0
+
+
+slt<-rbind(ns.ann.station.sum.slt, os.ann.station.sum.slt)
+slt.mean<-aggregate(slt$StationKGHA, by=list(Station=slt$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+slt.mean<-merge.data.frame(slt.mean, site.names, all=F)
+slt.os.mean<-aggregate(os.ann.station.sum.slt$StationKGHA, by=list(Year=os.ann.station.sum.slt$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+slt10<-subset(lengthfreq, SPECIES=='308')
+
+ns.os.slt2<-rbind(ns.slt, os.slt)
+ns.os.slt<-ns.os.slt2%>%
+  tidyr::uncount(NUM)
+ns.os.slt$Temp_avg_bottom<-(ns.os.slt$TEMP_BEG_BOTTOM+ns.os.slt$TEMP_END_BOTTOM)/2
+```
+
+    
+**siscowet Lake Trout**
+*Salvelinus namaycush siscowet*
+
+Most caught at a single site: `r max(ns.os.slt2$NUM)` ~ Total collected all years: `r sum(ns.os.slt2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(slt.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=slt.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(slt.os.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Offshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_x_continuous(breaks=pretty_breaks())+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(slt10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.slt, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.slt, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Deepwater Sculpin
+##summarize nearshore data
+
+ns.dws<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==904)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.dws<-aggregate(ns.dws$KGHA, by=list(YEAR=ns.dws$YEAR, Station=ns.dws$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.dws$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.dws$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.dws<-merge.data.frame(ns.ann.station.sum.dws, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.dws[c('StationKGHA')][is.na(ns.ann.station.sum.dws[c('StationKGHA')])]<-0
+
+os.dws<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==904)
+os.ann.station.sum.dws<-aggregate(os.dws$KGHA, by=list(YEAR=os.dws$YEAR, Station=os.dws$LOCATION,
+                                               BEG_LONGITUDE_DD=os.dws$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.dws$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.dws<-merge.data.frame(os.ann.station.sum.dws, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.dws[c('StationKGHA')][is.na(os.ann.station.sum.dws[c('StationKGHA')])]<-0
+
+
+dws<-rbind(ns.ann.station.sum.dws, os.ann.station.sum.dws)
+dws.mean<-aggregate(dws$StationKGHA, by=list(Station=dws$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+dws.mean<-merge.data.frame(dws.mean, site.names, all=F)
+dws.os.mean<-aggregate(os.ann.station.sum.dws$StationKGHA, by=list(Year=os.ann.station.sum.dws$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+dws10<-subset(lengthfreq, SPECIES=='904')
+
+ns.os.dws2<-rbind(ns.dws, os.dws)
+ns.os.dws<-ns.os.dws2%>%
+  tidyr::uncount(NUM)
+ns.os.dws$Temp_avg_bottom<-(ns.os.dws$TEMP_BEG_BOTTOM+ns.os.dws$TEMP_END_BOTTOM)/2
+```
+
+    
+**Deepwater Sculpin**
+*Myoxocephalus thompsonii*
+
+Most caught at a single site: `r max(ns.os.dws2$NUM)` ~ Total collected all years: `r sum(ns.os.dws2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(dws.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=dws.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(dws.os.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Offshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_x_continuous(breaks=pretty_breaks())+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(dws10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text = element_text(size=8))
+
+grid.arrange(a,b, ncol=2)
+```
+
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.dws, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.dws, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Ninespine stickleback
+##summarize nearshore data
+
+ns.nss<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==130)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.nss<-aggregate(ns.nss$KGHA, by=list(YEAR=ns.nss$YEAR, Station=ns.nss$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.nss$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.nss$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.nss<-merge.data.frame(ns.ann.station.sum.nss, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.nss[c('StationKGHA')][is.na(ns.ann.station.sum.nss[c('StationKGHA')])]<-0
+
+os.nss<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==130)
+os.ann.station.sum.nss<-aggregate(os.nss$KGHA, by=list(YEAR=os.nss$YEAR, Station=os.nss$LOCATION,
+                                               BEG_LONGITUDE_DD=os.nss$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.nss$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.nss<-merge.data.frame(os.ann.station.sum.nss, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.nss[c('StationKGHA')][is.na(os.ann.station.sum.nss[c('StationKGHA')])]<-0
+
+
+nss<-rbind(ns.ann.station.sum.nss, os.ann.station.sum.nss)
+nss.mean<-aggregate(nss$StationKGHA, by=list(Station=nss$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+nss.mean<-merge.data.frame(nss.mean, site.names, all=F)
+nss.ns.mean<-aggregate(ns.ann.station.sum.nss$StationKGHA, by=list(Year=ns.ann.station.sum.nss$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+nss10<-subset(lengthfreq, SPECIES=='130')
+
+ns.os.nss2<-rbind(ns.nss, os.nss)
+ns.os.nss<-ns.os.nss2%>%
+  tidyr::uncount(NUM)
+ns.os.nss$Temp_avg_bottom<-(ns.os.nss$TEMP_BEG_BOTTOM+ns.os.nss$TEMP_END_BOTTOM)/2
+```
+
+**Ninespine Stickleback**
+*Pungitius pungitius*
+
+Most caught at a single site: `r max(ns.os.nss2$NUM)` ~ Total collected all years: `r sum(ns.os.nss2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(nss.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=nss.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(nss.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(nss10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text = element_text(size=8))
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.nss, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.nss, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Trout-perch
+##summarize nearshore data
+
+ns.tp<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==131)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.tp<-aggregate(ns.tp$KGHA, by=list(YEAR=ns.tp$YEAR, Station=ns.tp$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.tp$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.tp$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.tp<-merge.data.frame(ns.ann.station.sum.tp, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.tp[c('StationKGHA')][is.na(ns.ann.station.sum.tp[c('StationKGHA')])]<-0
+tp<-ns.ann.station.sum.tp ##currently there has never been a trout-perch caught in the offshore cruise, so you don't need the below code
+#os.tp<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+#  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+ # filter(END_DEPTH>84)%>%
+#  filter(SPECIES==131)
+#os.ann.station.sum.tp<-aggregate(os.tp$KGHA, by=list(YEAR=os.tp$YEAR, Station=os.tp$LOCATION,
+      #                                         BEG_LONGITUDE_DD=os.tp$BEG_LONGITUDE_DD,
+      #                                         BEG_LATITUDE_DD=os.tp$BEG_LATITUDE_DD), FUN=sum)%>%
+ # renameCol('x','StationKGHA')
+
+#os.ann.station.sum.tp<-merge.data.frame(os.ann.station.sum.tp, os.sites.byyear,all=TRUE)
+
+#os.ann.station.sum.tp[c('StationKGHA')][is.na(os.ann.station.sum.tp[c('StationKGHA')])]<-0
+
+
+#tp<-rbind(ns.ann.station.sum.tp, os.ann.station.sum.tp)
+tp.mean<-aggregate(tp$StationKGHA, by=list(Station=tp$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+tp.mean<-merge.data.frame(tp.mean, site.names, all=F)
+tp.ns.mean<-aggregate(ns.ann.station.sum.tp$StationKGHA, by=list(Year=ns.ann.station.sum.tp$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+tp10<-subset(lengthfreq, SPECIES=='131')
+
+ns.os.tp2<-ns.tp ##if ever caught on offshore cruise, change this to rbind(ns.tp, os.tp)
+ns.os.tp<-ns.os.tp2%>%
+  tidyr::uncount(NUM)
+ns.os.tp$Temp_avg_bottom<-(ns.os.tp$TEMP_BEG_BOTTOM+ns.os.tp$TEMP_END_BOTTOM)/2
+```
+
+**Trout-perch**
+*Percopsis omiscomaycus*
+
+Most caught at a single site: `r max(ns.os.tp2$NUM)` ~ Total collected all years: `r sum(ns.os.tp2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(tp.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=tp.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(tp.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(tp10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(a,b, ncol=2)
+```
+
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.tp, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.tp, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##I <3 Longnose Sucker!
+##summarize nearshore data
+
+ns.lns<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==404)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.lns<-aggregate(ns.lns$KGHA, by=list(YEAR=ns.lns$YEAR, Station=ns.lns$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.lns$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.lns$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.lns<-merge.data.frame(ns.ann.station.sum.lns, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.lns[c('StationKGHA')][is.na(ns.ann.station.sum.lns[c('StationKGHA')])]<-0
+lns<-ns.ann.station.sum.lns
+#os.lns<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+ # filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+ # filter(END_DEPTH>84)%>%
+ # filter(SPECIES==404)
+#os.ann.station.sum.lns<-aggregate(os.lns$KGHA, by=list(YEAR=os.lns$YEAR, Station=os.lns$LOCATION,
+    #                                           BEG_LONGITUDE_DD=os.lns$BEG_LONGITUDE_DD,
+   #                                            BEG_LATITUDE_DD=os.lns$BEG_LATITUDE_DD), FUN=sum)%>%
+ # renameCol('x','StationKGHA')
+
+#os.ann.station.sum.lns<-merge.data.frame(os.ann.station.sum.lns, os.sites.byyear,all=TRUE)
+
+#os.ann.station.sum.lns[c('StationKGHA')][is.na(os.ann.station.sum.lns[c('StationKGHA')])]<-0
+
+
+#lns<-rbind(ns.ann.station.sum.lns, os.ann.station.sum.lns)
+lns.mean<-aggregate(lns$StationKGHA, by=list(Station=lns$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+lns.mean<-merge.data.frame(lns.mean, site.names, all=F)
+lns.ns.mean<-aggregate(ns.ann.station.sum.lns$StationKGHA, by=list(Year=ns.ann.station.sum.lns$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+lns10<-subset(lengthfreq, SPECIES=='404')
+
+ns.os.lns2<-ns.lns ##if ever caught on offshore, change this to rbind
+ns.os.lns<-ns.os.lns2%>%
+  tidyr::uncount(NUM)
+ns.os.lns$Temp_avg_bottom<-(ns.os.lns$TEMP_BEG_BOTTOM+ns.os.lns$TEMP_END_BOTTOM)/2
+
+```
+
+**Longnose Sucker**
+*Catostomus catostomus*
+
+Most caught at a single site: `r max(ns.os.lns2$NUM)` ~ Total collected all years: `r sum(ns.os.lns2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(lns.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=lns.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(lns.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(lns10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text = element_text(size=8))
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.lns, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.lns, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Pygmy whitefish
+##summarize nearshore data
+
+ns.pwf<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==211)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.pwf<-aggregate(ns.pwf$KGHA, by=list(YEAR=ns.pwf$YEAR, Station=ns.pwf$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.pwf$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.pwf$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.pwf<-merge.data.frame(ns.ann.station.sum.pwf, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.pwf[c('StationKGHA')][is.na(ns.ann.station.sum.pwf[c('StationKGHA')])]<-0
+
+os.pwf<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==211)
+os.ann.station.sum.pwf<-aggregate(os.pwf$KGHA, by=list(YEAR=os.pwf$YEAR, Station=os.pwf$LOCATION,
+                                               BEG_LONGITUDE_DD=os.pwf$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.pwf$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.pwf<-merge.data.frame(os.ann.station.sum.pwf, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.pwf[c('StationKGHA')][is.na(os.ann.station.sum.pwf[c('StationKGHA')])]<-0
+
+
+pwf<-rbind(ns.ann.station.sum.pwf, os.ann.station.sum.pwf)
+pwf.mean<-aggregate(pwf$StationKGHA, by=list(Station=pwf$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+pwf.mean<-merge.data.frame(pwf.mean, site.names, all=F)
+pwf.ns.mean<-aggregate(ns.ann.station.sum.pwf$StationKGHA, by=list(Year=ns.ann.station.sum.pwf$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+pwf10<-subset(lengthfreq, SPECIES=='211')
+
+ns.os.pwf2<-rbind(ns.pwf, os.pwf)
+ns.os.pwf<-ns.os.pwf2%>%
+  tidyr::uncount(NUM)
+ns.os.pwf$Temp_avg_bottom<-(ns.os.pwf$TEMP_BEG_BOTTOM+ns.os.pwf$TEMP_END_BOTTOM)/2
+```
+
+**Pygmy Whitefish**
+*Prosopium coulteri*
+
+Most caught at a single site: `r max(ns.os.pwf2$NUM)` ~ Total collected all years: `r sum(ns.os.pwf2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(pwf.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=pwf.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(pwf.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(pwf10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits=c(0,200)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text = element_text(size=8))
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.pwf, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.pwf, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Slimy Sculpin
+##summarize nearshore data
+
+ns.slsc<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==902)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.slsc<-aggregate(ns.slsc$KGHA, by=list(YEAR=ns.slsc$YEAR, Station=ns.slsc$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.slsc$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.slsc$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.slsc<-merge.data.frame(ns.ann.station.sum.slsc, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.slsc[c('StationKGHA')][is.na(ns.ann.station.sum.slsc[c('StationKGHA')])]<-0
+
+os.slsc<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==902)
+os.ann.station.sum.slsc<-aggregate(os.slsc$KGHA, by=list(YEAR=os.slsc$YEAR, Station=os.slsc$LOCATION,
+                                               BEG_LONGITUDE_DD=os.slsc$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.slsc$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.slsc<-merge.data.frame(os.ann.station.sum.slsc, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.slsc[c('StationKGHA')][is.na(os.ann.station.sum.slsc[c('StationKGHA')])]<-0
+
+
+slsc<-rbind(ns.ann.station.sum.slsc, os.ann.station.sum.slsc)
+slsc.mean<-aggregate(slsc$StationKGHA, by=list(Station=slsc$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+slsc.mean<-merge.data.frame(slsc.mean, site.names, all=F)
+slsc.ns.mean<-aggregate(ns.ann.station.sum.slsc$StationKGHA, by=list(Year=ns.ann.station.sum.slsc$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+slsc10<-subset(lengthfreq, SPECIES=='902')
+
+ns.os.slsc2<-rbind(ns.slsc, os.slsc)
+ns.os.slsc<-ns.os.slsc2%>%
+  tidyr::uncount(NUM)
+ns.os.slsc$Temp_avg_bottom<-(ns.os.slsc$TEMP_BEG_BOTTOM+ns.os.slsc$TEMP_END_BOTTOM)/2
+```
+
+**Slimy Sculpin**
+*Cottus cognatus*
+
+Most caught at a single site: `r max(ns.os.slsc2$NUM)` ~ Total collected all years: `r sum(ns.os.slsc2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(slsc.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=slsc.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(slsc.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(slsc10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text = element_text(size=8))
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.slsc, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.slsc, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Spoonhead Sculpin
+##summarize nearshore data
+
+ns.spsc<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==903)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.spsc<-aggregate(ns.spsc$KGHA, by=list(YEAR=ns.spsc$YEAR, Station=ns.spsc$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.spsc$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.spsc$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.spsc<-merge.data.frame(ns.ann.station.sum.spsc, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.spsc[c('StationKGHA')][is.na(ns.ann.station.sum.spsc[c('StationKGHA')])]<-0
+
+os.spsc<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==903)
+os.ann.station.sum.spsc<-aggregate(os.spsc$KGHA, by=list(YEAR=os.spsc$YEAR, Station=os.spsc$LOCATION,
+                                               BEG_LONGITUDE_DD=os.spsc$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.spsc$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.spsc<-merge.data.frame(os.ann.station.sum.spsc, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.spsc[c('StationKGHA')][is.na(os.ann.station.sum.spsc[c('StationKGHA')])]<-0
+
+
+spsc<-rbind(ns.ann.station.sum.spsc, os.ann.station.sum.spsc)
+spsc.mean<-aggregate(spsc$StationKGHA, by=list(Station=spsc$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+spsc.mean<-merge.data.frame(spsc.mean, site.names, all=F)
+spsc.ns.mean<-aggregate(ns.ann.station.sum.spsc$StationKGHA, by=list(Year=ns.ann.station.sum.spsc$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+spsc10<-subset(lengthfreq, SPECIES=='903')
+
+ns.os.spsc2<-rbind(ns.spsc, os.spsc)
+ns.os.spsc<-ns.os.spsc2%>%
+  tidyr::uncount(NUM)
+ns.os.spsc$Temp_avg_bottom<-(ns.os.spsc$TEMP_BEG_BOTTOM+ns.os.spsc$TEMP_END_BOTTOM)/2
+```
+
+**Spoonhead Sculpin**
+*Cottus ricei*
+
+Most caught at a single site: `r max(ns.os.spsc2$NUM)` ~ Total collected all years: `r sum(ns.os.spsc2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(spsc.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=spsc.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(spsc.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(spsc10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.spsc, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.spsc, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Burbot
+##summarize nearshore data
+
+ns.burb<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==127)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.burb<-aggregate(ns.burb$KGHA, by=list(YEAR=ns.burb$YEAR, Station=ns.burb$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.burb$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.burb$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.burb<-merge.data.frame(ns.ann.station.sum.burb, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.burb[c('StationKGHA')][is.na(ns.ann.station.sum.burb[c('StationKGHA')])]<-0
+
+os.burb<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==127)
+os.ann.station.sum.burb<-aggregate(os.burb$KGHA, by=list(YEAR=os.burb$YEAR, Station=os.burb$LOCATION,
+                                               BEG_LONGITUDE_DD=os.burb$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=os.burb$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.ann.station.sum.burb<-merge.data.frame(os.ann.station.sum.burb, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum.burb[c('StationKGHA')][is.na(os.ann.station.sum.burb[c('StationKGHA')])]<-0
+
+
+burb<-rbind(ns.ann.station.sum.burb, os.ann.station.sum.burb)
+burb.mean<-aggregate(burb$StationKGHA, by=list(Station=burb$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+burb.mean<-merge.data.frame(burb.mean, site.names, all=F)
+burb.ns.mean<-aggregate(ns.ann.station.sum.burb$StationKGHA, by=list(Year=ns.ann.station.sum.burb$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+burb10<-subset(lengthfreq, SPECIES=='127')
+
+ns.os.burb2<-rbind(ns.burb, os.burb)
+ns.os.burb<-ns.os.burb2%>%
+  tidyr::uncount(NUM)
+ns.os.burb$Temp_avg_bottom<-(ns.os.burb$TEMP_BEG_BOTTOM+ns.os.burb$TEMP_END_BOTTOM)/2
+```
+
+**Burbot**
+*Lota lota*
+
+Most caught at a single site: `r max(ns.os.burb2$NUM)` ~ Total collected all years: `r sum(ns.os.burb2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(burb.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=burb.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(burb.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(burb10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.burb, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.burb, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##hatchery lake trout
+##summarize nearshore data
+
+ns.hlt<-subset(all.data, TARGET==2 & YEAR>1977 & SPECIES==307)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum.hlt<-aggregate(ns.hlt$KGHA, by=list(YEAR=ns.hlt$YEAR, Station=ns.hlt$LOCATION,
+                                              BEG_LONGITUDE_DD=ns.hlt$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE_DD=ns.hlt$BEG_LATITUDE_DD), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.ann.station.sum.hlt<-merge.data.frame(ns.ann.station.sum.hlt, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum.hlt[c('StationKGHA')][is.na(ns.ann.station.sum.hlt[c('StationKGHA')])]<-0
+
+os.hlt<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)%>%
+  filter(SPECIES==307)
+#os.ann.station.sum.hlt<-aggregate(os.hlt$KGHA, by=list(YEAR=os.hlt$YEAR, Station=os.hlt$LOCATION,
+ #                                              BEG_LONGITUDE_DD=os.hlt$BEG_LONGITUDE_DD,
+#                                               BEG_LATITUDE_DD=os.hlt$BEG_LATITUDE_DD), FUN=sum)%>%
+ # renameCol('x','StationKGHA')
+
+#os.ann.station.sum.hlt<-merge.data.frame(os.ann.station.sum.hlt, os.sites.byyear,all=TRUE)
+
+#os.ann.station.sum.hlt[c('StationKGHA')][is.na(os.ann.station.sum.hlt[c('StationKGHA')])]<-0
+
+
+#hlt<-rbind(ns.ann.station.sum.hlt, os.ann.station.sum.hlt)
+hlt<-ns.ann.station.sum.hlt
+hlt.mean<-aggregate(hlt$StationKGHA, by=list(Station=hlt$Station), FUN=mean)%>%
+  renameCol('x','MeanKGHA')
+
+hlt.mean<-merge.data.frame(hlt.mean, site.names, all=F)
+hlt.ns.mean<-aggregate(ns.ann.station.sum.hlt$StationKGHA, by=list(Year=ns.ann.station.sum.hlt$YEAR), FUN=mean)%>%
+  renameCol('x','ns.mean')
+
+hlt10<-subset(lengthfreq, SPECIES=='307')
+
+ns.os.hlt2<-rbind(ns.hlt, os.hlt)
+ns.os.hlt<-ns.os.hlt2%>%
+  tidyr::uncount(NUM)
+ns.os.hlt$Temp_avg_bottom<-(ns.os.hlt$TEMP_BEG_BOTTOM+ns.os.hlt$TEMP_END_BOTTOM)/2
+```
+
+**hatchery Lake Trout**
+*Salvelinus namaycush*
+
+Most caught at a single site: `r max(ns.os.hlt2$NUM)` ~ Total collected all years: `r sum(ns.os.hlt2$NUM)`
+
+```{r,fig.width=9, fig.height=4.6, dpi=300, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(hlt.mean, aes(DD_LONGITUDE, DD_LATITUDE)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=hlt.mean, mapping=aes(DD_LONGITUDE, DD_LATITUDE, color=log(MeanKGHA)), size=6, stroke=1.5)+
+  scale_color_continuous(high='red',low='cyan', name='log(mean biomass (kg/ha))')+
+  map_theme+
+  geom_text(aes(label=Station))+
+  labs(title='Lake Superior period-of-record biomass')+
+  theme(legend.position=c(0.15,0.75),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12))
+```
+
+```{r, fig.width=8, fig.height=2.75, echo=FALSE, message=FALSE, warning=FALSE}
+a<-ggplot(hlt.ns.mean, aes(x=Year, y=ns.mean))+
+  geom_bar(color='grey50', stat='identity')+
+  plot_theme+
+  labs(y='Mean biomass (kg/ha)', title='Nearshore survey annual biomass')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12))+
+  scale_y_continuous(expand=c(0,0))
+
+b<-ggplot(hlt10, aes(x = LENGTH, y = SPECIES)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_x_continuous(limits = c(0,NA)) +
+  scale_y_discrete(expand = c(0.01, 0)) +
+  labs(title='Five year length-frequency', x='Length (mm)', y='Frequency')+
+  plot_theme+
+  facet_grid(YEAR~.)+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(a,b, ncol=2)
+```
+
+```{r, echo=FALSE, fig.height=2.75, fig.width=8, message=FALSE, warning=FALSE}
+c<-ggplot(ns.os.hlt, aes(x=END_DEPTH, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='End trawl depth (m)', y='Frequency', title='Period-of-record depth distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+d<-ggplot(ns.os.hlt, aes(x=Temp_avg_bottom, y=SPECIES))+
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01)+
+  plot_theme+
+  scale_y_discrete(expand=c(0,0), labels=NULL)+
+  labs(x='Average bottom temperature (C)', y='Frequency', title='Period-of-record temperature distribution')+
+  theme(axis.text=element_text(size=9),
+        plot.title=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=8))
+
+grid.arrange(c,d, ncol=2)
+
+```

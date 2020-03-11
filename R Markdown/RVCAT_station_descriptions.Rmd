@@ -1,0 +1,324 @@
+---
+output:
+  word_document:
+    reference_docx: wordstyles.docx
+  pdf_document:
+    fig_caption: yes
+---
+
+```{r setup, results='hide', echo=FALSE, message=FALSE, warning=FALSE}
+library(rmarkdown)
+library(tinytex)
+library(knitr)
+library(tidyverse)
+library(doBy)
+library(readxl)
+library(ggplot2)
+library(plotrix)
+library(psych)
+library(rlang)
+library(dplyr)
+library(purrr)
+library(forcats)
+library(viridis)
+library(reshape)
+library(rgdal)
+library(xlsx)
+library(lubridate)
+library(plyr)
+library(gganimate)
+library(magick)
+library(grid)
+library(ggforce)
+library(kableExtra)
+library(png)
+library(ggridges)
+library(gridExtra)
+library(scales)
+library(emojifont)
+library(here)
+
+plot_theme<-theme(axis.line=element_line(size=1, color='black'),
+                  panel.background = element_rect(NA),
+                  axis.text=element_text(size=20, family='serif'),
+                  axis.title=element_text(size=20, family='serif'),
+                  plot.margin = margin(.5,.5,.5,.5,"cm"),
+                  legend.text=element_text(size=16, family='serif'),
+                  axis.ticks=element_line(size=1, color='black'),
+                  plot.title=element_text(size=24, family='serif'),
+                  plot.subtitle=element_text(size=16, family='serif'),
+                  plot.caption=element_text(size=16, family='serif'),
+                  legend.background = element_blank(),
+                  legend.key = element_blank(),
+                  strip.text=element_text(size=16, family='serif'))
+
+
+map_theme<-theme(axis.text=element_text(size=20, family='serif'), 
+            axis.title=element_text(size=20, family='serif'), 
+            plot.title=element_text(size=24, family='serif'),
+            plot.subtitle=element_text(size=18, family='serif'),
+            plot.caption=element_text(size=16, family='serif'), 
+            legend.position=c(0.08,0.7),
+            legend.text=element_text(size=16, family='serif'))
+
+
+##load the raw RVCAT data file
+##NOTE: this code is designed to process the ENTIRE RVCAT output, you can subset out target codes, species, years, etc later
+##you DO NOT need to spool off a specialized RVCAT file with just the data you want to analyze
+raw.data<-read.csv(here('Data','RVCAT.csv'))
+raw.data$SPECIES<-as.factor(raw.data$SPECIES)
+
+##change date format into usable form
+raw.data$OP_DATE<-as.character(raw.data$OP_DATE)
+raw.data$OP_DATE<-parse_date(raw.data$OP_DATE, format='%d-%b-%y')
+
+raw.data[is.na(raw.data[,"END_LATITUDE_DD"]), "END_LATITUDE_DD"] <- raw.data[is.na(raw.data[, "END_LATITUDE_DD"]),"BEG_LATITUDE_DD"]
+raw.data[is.na(raw.data[,"BEG_LATITUDE_DD"]), "BEG_LATITUDE_DD"] <- raw.data[is.na(raw.data[, "BEG_LATITUDE_DD"]),"END_LATITUDE_DD"]
+
+raw.data[is.na(raw.data[,"END_LONGITUDE_DD"]), "END_LONGITUDE_DD"] <- raw.data[is.na(raw.data[, "END_LONGITUDE_DD"]),"BEG_LONGITUDE_DD"]
+raw.data[is.na(raw.data[,"BEG_LONGITUDE_DD"]), "BEG_LONGITUDE_DD"] <- raw.data[is.na(raw.data[, "BEG_LONGITUDE_DD"]),"END_LONGITUDE_DD"]
+
+raw.data$Mid.Lat.DD<-(raw.data$BEG_LATITUDE_DD+raw.data$END_LATITUDE_DD)/2
+raw.data$Mid.Long.DD<-(raw.data$BEG_LONGITUDE_DD+raw.data$END_LONGITUDE_DD)/2
+
+##load the species names file for when needed
+codes.to.names<-read_xlsx(here('Data','Species_Taxonomy.xlsx'))
+sci.names<-select(codes.to.names, c(2:4))
+
+##set default themes for all plots and maps
+map_theme<-theme(axis.text=element_text(size=20, family='serif'), 
+                 axis.title=element_text(size=20, family='serif'), 
+                 plot.title=element_text(size=24, family='serif'),
+                 plot.subtitle=element_text(size=18, family='serif'),
+                 plot.caption=element_text(size=16, family='serif'), 
+                 legend.position=c(0.08,0.7),
+                 legend.text=element_text(size=16, family='serif'))
+plot_theme<-theme(axis.line=element_line(size=1, color='black'),
+                  panel.background = element_rect(NA),
+                  axis.text=element_text(size=20, family='serif'),
+                  axis.title=element_text(size=20, family='serif'),
+                  plot.margin = margin(.5,.5,.5,.5,"cm"),
+                  legend.text=element_text(size=16, family='serif'),
+                  axis.ticks=element_line(size=1, color='black'),
+                  plot.title=element_text(size=24, family='serif'),
+                  plot.subtitle=element_text(size=16, family='serif'),
+                  plot.caption=element_text(size=16, family='serif'),
+                  legend.background = element_blank(),
+                  legend.key = element_blank(),
+                  strip.text=element_text(size=16, family='serif'))
+
+
+ann_data_access<-'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0'
+ann_data_access2<-'doi.org/10.5066/F75M63X0'
+##to calculate NOHA and KGHA, need to subset out different vessels, as they have different conversion factors for area sampled
+
+##r/v siscowet from start to 1976 **note, conversion factor only verified from 1973-1976, an estimate for years prior
+siscowet76<-subset(raw.data, VESSEL==1 & YEAR<1977)
+siscowet76$NOHA<-((siscowet76$NUM*60)/siscowet76$TOW_TIME)/2.01
+siscowet76$KGHA<-((siscowet76$WT*.06)/siscowet76$TOW_TIME)/2.01
+siscowet76$HA_SWEPT<-(siscowet76$TOW_TIME/60)*2.01
+
+##r/v siscowet from 1977-1999
+siscowet77.99<-subset(raw.data, VESSEL==1 & YEAR>1976 & YEAR<2000)
+siscowet77.99$NOHA<-((siscowet77.99$NUM*60)/siscowet77.99$TOW_TIME)/2.45
+siscowet77.99$KGHA<-((siscowet77.99$WT*.06)/siscowet77.99$TOW_TIME)/2.45
+siscowet77.99$HA_SWEPT<-(siscowet77.99$TOW_TIME/60)*2.45
+
+##r/v grayling 1973-1999 (all years)
+grayling<-subset(raw.data, VESSEL==11)
+grayling$NOHA<-((grayling$NUM*60)/grayling$TOW_TIME)/2.05
+grayling$KGHA<-((grayling$WT*.06)/grayling$TOW_TIME)/2.05
+grayling$HA_SWEPT<-(grayling$TOW_TIME/60)*2.05
+
+##r/v coaster, USGS, 1993 serials 1-120
+coaster93<-subset(raw.data, VESSEL==99 & YEAR==1993 & SERIAL<121)
+coaster93$NOHA<-((coaster93$NUM*60)/coaster93$TOW_TIME)/.6097
+coaster93$KGHA<-((coaster93$WT*.06)/coaster93$TOW_TIME)/.6097
+coaster93$HA_SWEPT<-(coaster93$TOW_TIME/60)*.6097
+
+##r/v coaster, USGS, 1988-1992 and 1994-2004  and 1993 serials>120
+coasterUSGS1<-subset(raw.data, VESSEL==99 & YEAR<1993)
+coasterUSGS2<-subset(raw.data, VESSEL==99 & YEAR>1993)
+coasterUSGS3<-subset(raw.data, VESSEL==99 & YEAR==1993 & SERIAL>120)
+coasterUSGS<-rbind(coasterUSGS1, coasterUSGS2, coasterUSGS3)
+coasterUSGS$NOHA<-((coasterUSGS$NUM*60)/coasterUSGS$TOW_TIME)/.785
+coasterUSGS$KGHA<-((coasterUSGS$WT*.06)/coasterUSGS$TOW_TIME)/.785
+coasterUSGS$HA_SWEPT<-(coasterUSGS$TOW_TIME/60)*.785
+
+##r/v coaster/shoveler USFWS 2009 (calling it shoveler to differentiate from coaster above)
+shoveler<-subset(raw.data, VESSEL==95)
+shoveler$NOHA<-(shoveler$NUM/(((shoveler$DISTANCE*5280)*14.76)/107639.1))
+shoveler$KGHA<-(shoveler$WT*.001/(((shoveler$DISTANCE*5280)*14.76)/107639.1))
+shoveler$HA_SWEPT<-((shoveler$DISTANCE*5280)*14.76)/107639.1
+
+##r/v whitefish
+whitefish<-subset(raw.data, VESSEL==50)
+whitefish$NOHA<-((whitefish$NUM*60)/whitefish$TOW_TIME)/1.174
+whitefish$KGHA<-((whitefish$WT*.06)/whitefish$TOW_TIME)/1.174
+whitefish$HA_SWEPT<-(whitefish$TOW_TIME/60)*1.174
+
+##johnboat
+johnboat<-subset(raw.data, VESSEL==92)
+johnboat$NOHA<-((johnboat$NUM*60)/johnboat$TOW_TIME)/.6568
+johnboat$KGHA<-((johnboat$WT*.06)/johnboat$TOW_TIME)/.6568
+johnboat$HA_SWEPT<-(johnboat$TOW_TIME/60)*.6568
+
+##r/v kaho **note, don't have a conversion factor for this ship yet, using the conversion factor for the siscowet for now
+kaho<-subset(raw.data, VESSEL==4)
+kaho$NOHA<-((kaho$NUM*60)/kaho$TOW_TIME)/2.45
+kaho$KGHA<-((kaho$WT*.06)/kaho$TOW_TIME)/2.45
+kaho$HA_SWEPT<-(kaho$TOW_TIME/60)*2.45
+
+##r/v kiyi
+kiyi<-subset(raw.data, VESSEL==25)
+kiyi$NOHA<-(kiyi$NUM/(((kiyi$DISTANCE*5280)*25.49)/107639.1))
+kiyi$KGHA<-(kiyi$WT*.001/(((kiyi$DISTANCE*5280)*25.49)/107639.1))
+kiyi$HA_SWEPT<-(((kiyi$DISTANCE*5280)*25.49)/107639.1)
+
+##Daphnia **note, no bottom trawls done off this ship, so doesn't have all the same data as the other vessels
+daphnia<-subset(raw.data, VESSEL==9)
+daphnia$NOHA<-NA
+daphnia$KGHA<-NA
+daphnia$HA_SWEPT<-NA
+
+##bind all data frames together now that they have NOHA and KGHA
+all.data<-rbind(kiyi, siscowet76, siscowet77.99, grayling, coaster93, coasterUSGS, whitefish, johnboat, kaho, shoveler, daphnia)
+all.data$STATE<-as.character(all.data$STATE)
+##check that the number of rows in all.data matches the number in the raw.data input to make sure no data got lost along the way
+##if data were lost, were any additional vessels used that are not listed above? any vessel codes changed or recorded incorrectly?
+
+##TO TEST THE CODE, mutate 2011 data to 2025, this should show if everything is updating automatically. DELETE OR UNDO WHEN FINISHED!!
+#all.data<-mutate(all.data, YEAR=ifelse(YEAR==2011,2025,YEAR))
+
+
+##summarize nearshore data
+ns<-subset(all.data, TARGET==2 & YEAR>1977)
+
+##calculate mean biomass by year, start by getting total kgha for each station
+ns.ann.station.sum<-aggregate(ns$KGHA, by=list(YEAR=ns$YEAR, Station=ns$LOCATION,
+                                               BEG_LONGITUDE=ns$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE=ns$BEG_LATITUDE_DD,
+                                               SPECIES=ns$SPECIES), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+ns.sites.byyear<-ns%>%
+  group_by(YEAR)%>%
+  distinct(LOCATION)
+ns.sites.byyear$SITECHECK<-'SURVEYED'
+
+ns.sites.byyear<-renameCol(ns.sites.byyear, 'LOCATION', 'Station')
+ns.ann.station.sum<-merge.data.frame(ns.ann.station.sum, ns.sites.byyear,all=TRUE)
+
+ns.ann.station.sum[c('StationKGHA')][is.na(ns.ann.station.sum[c('StationKGHA')])]<-0
+
+
+os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)
+os.ann.station.sum<-aggregate(os$KGHA, by=list(YEAR=os$YEAR, Station=os$LOCATION,
+                                               BEG_LONGITUDE=os$BEG_LONGITUDE_DD,
+                                               BEG_LATITUDE=os$BEG_LATITUDE_DD,
+                                               SPECIES=os$SPECIES), FUN=sum)%>%
+  renameCol('x','StationKGHA')
+
+os.sites.byyear<-os%>%
+  group_by(YEAR)%>%
+  distinct(LOCATION)
+os.sites.byyear$SITECHECK<-'SURVEYED'
+
+os.sites.byyear<-renameCol(os.sites.byyear, 'LOCATION', 'Station')
+os.ann.station.sum<-merge.data.frame(os.ann.station.sum, os.sites.byyear,all=TRUE)
+
+os.ann.station.sum[c('StationKGHA')][is.na(os.ann.station.sum[c('StationKGHA')])]<-0
+
+
+stationdata<-rbind(ns.ann.station.sum, os.ann.station.sum)
+stationdata$SPECIES<-as.numeric(as.character(stationdata$SPECIES))
+stationdata<-subset(stationdata, SPECIES>0)
+stationdata2<-aggregate(stationdata$StationKGHA, by=list(Station=stationdata$Station, SPECIES=stationdata$SPECIES), FUN=mean)%>%
+  renameCol('x','Mean.KGHA')
+codes.to.names<-read_xlsx(here('Data','Species_Taxonomy.xlsx'))
+sci.names<-select(codes.to.names, c(2:3))
+stationdata2<-merge.data.frame(stationdata2, sci.names, all=F)
+stationdata2<-as.data.frame(stationdata2)
+stationdata2<-stationdata2[order(stationdata2$Station),]
+station_list<-unique(stationdata2$Station)
+stationdata2<-subset(stationdata2, COMMON_NAME!='Unidentified Coregonus')
+
+station.sum<-aggregate(stationdata$StationKGHA, by=list(Station=stationdata$Station, Year=stationdata$YEAR), FUN=sum)%>%
+  renameCol('x','total.kgha')
+station.sum2<-cast(station.sum, Station~Year)
+
+station.coords<-select(stationdata, c(2:4))
+station.coords<-station.coords[match(unique(station.coords$Station), station.coords$Station),]
+
+station.dets<-read.xlsx(here('Data','Site_Names.xlsx'), sheetIndex = 1)
+station.dets<-select(station.dets, c(1,2))
+station.dets$Station2<-paste('Station', station.dets$Station, sep=' ')
+station.dets$StationName<-paste(station.dets$Station2,station.dets$NAME, sep='-')
+station.dets<-select(station.dets, c(1,4))
+
+ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "lake_superior")
+ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
+ls_poly.fort <- fortify(ls_poly)
+
+```
+
+
+```{r, fig.width=6, fig.height=2.85, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+
+##NOTE: this code works in a loop--will cause changes to all pages. Be careful about resizing- it might look okay for the first page but push other stations
+##to more than one page
+
+for(i in seq_along(station_list)){
+
+  details<-subset(station.dets, Station==station_list[i])
+  cat(details$StationName,"  \n")
+  
+map<-ggplot(subset(station.coords, station.coords$Station==station_list[i]),
+            aes(x=BEG_LONGITUDE, y=BEG_LATITUDE)) +
+   theme_bw() +
+   scale_y_continuous(name='Latitude')+
+   scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(data=subset(station.coords, station.coords$Station==station_list[i]),
+             mapping=aes(BEG_LONGITUDE, BEG_LATITUDE), color='violetred', size=3, stroke=1.5)+
+  map_theme+
+  theme(axis.text=element_text(size=12),
+        plot.title=element_text(size=14),
+        axis.title=element_text(size=12)) 
+
+print(map) 
+  
+plot<-ggplot(subset(stationdata2,stationdata2$Station==station_list[i] ),
+       aes(x=COMMON_NAME, y=Mean.KGHA))+
+  geom_bar(stat='identity')+
+  plot_theme+
+  scale_y_continuous(expand=c(0,0))+
+  theme(axis.text.x=element_text(angle=90, size=8, vjust=0.5, hjust=1),
+        axis.title=element_text(size=10),
+        plot.title=element_text(size=12),
+        plot.margin=unit(c(0.1,0.1,0.1,0.1), 'cm'),
+        axis.text.y=element_text(size=10))+
+  labs(title=paste('Mean species biomass at station',station_list[i], sep=' '), x=' ',y='Mean biomass (kg/ha)')
+
+print(plot)
+
+plot2<-ggplot(subset(station.sum,station.sum$Station==station_list[i] ),
+       aes(x=Year, y=total.kgha))+
+  geom_bar(stat='identity')+
+  plot_theme+
+  scale_y_continuous(expand=c(0,0))+
+  theme(axis.text.x=element_text(size=10),
+        axis.title=element_text(size=10),
+        plot.title=element_text(size=12),
+        axis.text.y=element_text(size=10))+
+  scale_x_continuous(breaks=pretty_breaks())+
+  labs(title=paste('Annual total biomass at station',station_list[i], sep=' '), x=' ',y='Total biomass (kg/ha)')
+
+print(plot2)
+
+}
+
+
