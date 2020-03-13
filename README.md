@@ -10,7 +10,7 @@ R project that contains a suite of data and R programs for summarizing and prese
   5. trawl_constants_by_vessel.xlsx, Contains equations and the constants used to calculate area swept for different vessels
   6. LENGTHS_RVCAT.csv, Fish length data. File is created as spool out of RVCAT system.
   7. LS_GLERL_Ice.csv, Downloaded from https://www.glerl.noaa.gov/data/ice/#historical
-  8. LS_WTMP_fromTaylor.xlsx, Taylor Stewart data downloaded from NASA
+  8. LS_GLERL_WTemp, Downloaded from https://coastwatch.glerl.noaa.gov/statistic/statistic.html
   9. LSBS_BTdata.xlsx, All of the Lake Superior Biological Station's electronic water profile data. The modern bathythermograph data. Contains records from 1991-present. File is from an Excel file that is created by cutting and pasting the bathythermograph data from individual BT cast files to the Excel file.
   10. LSBS_Stomach_Contents.xlsx, Lake Superior Biological Station fish stomach contents, 2012-present 
 
