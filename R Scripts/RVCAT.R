@@ -255,6 +255,19 @@ ggplot(ns.summary2, aes(x=YEAR, y=StationKGHA_mean))+
 
 ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_smelt.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
+ggplot(ns.summary2, aes(x=YEAR, y=StationKGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Rainbow Smelt Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary2, aes(x=YEAR, ymin=StationKGHA_mean-StationKGHA_std.error, ymax=StationKGHA_mean+StationKGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0), breaks=c(5,10,15,20,25), labels=c('5','10','15','20','25'), limits=c(0,6))
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_smelt_nomeans.png'), dpi=300, width=40, height=20, units='cm')
 
 ##calculate summary statistics WITH SPECIES
 ns.ann.station.sum.spp<-aggregate(ns$KGHA, by=list(YEAR=ns$YEAR, Station=ns$LOCATION, Species=ns$SPECIES), FUN=sum)%>%

@@ -149,7 +149,7 @@ Sumdata2 <- Sumdata1 %>%
 
 Sumdata3 <-Sumdata2 %>%
   group_by(Month) %>%
-  summarize(median_T=median(Temperature), mean_T=mean(Temperature))
+  summarize(median_T=median(Temperature), mean_T=mean(Temperature), min_T=min(Temperature), max_T=max(Temperature))
 
 ##ggridges plot with leopard look, median lines inside distribution not very visible
 ggplot(Sumdata2, aes(x = Temperature, y = Year, fill = ..x..)) +
