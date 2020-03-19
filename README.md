@@ -1,6 +1,8 @@
 # RVCAT
 R project that contains a suite of data and R programs for summarizing and presenting RVCAT data for Lake Superior
-
+<br>
+![Image description](ns_annual_biomass_ciscobloater_lwf.png)
+<br>
 ## Directories
 /Data
   1. RVCAT.csv, Contains all the fish catch and effort data. File is created as spool out of RVCAT system.
