@@ -222,7 +222,7 @@ ggsave(here('Plots and Tables/Ice_Temp','LS_20PercIceDays_Recruitment.png'), dpi
 
 ##Today's date as JDay or you could change this to any day of the ice season you care about
 x <-Sys.Date()
-jdaytoday = day(x)
+jdaytoday = yday(x)
 
 ###manually subset data for any JDay
 jdaytoday = 40

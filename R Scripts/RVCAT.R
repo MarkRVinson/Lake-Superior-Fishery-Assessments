@@ -212,73 +212,76 @@ ggplot(ns.summary, aes(x=YEAR, y=StationKGHA_mean))+
 ##save plot to the folder you assigned as the working directory
 ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_nomeans.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
-##to plot ns biomass of RAINBOW SMELT ONLY
-##calculate mean biomass by year, start by getting total kgha for each station
-ns.ann.station.sum.spp5<-subset(ns, SPECIES==109)
-ns.ann.station.sum.spp5<-aggregate(ns.ann.station.sum.spp5$KGHA, by=list(YEAR=ns.ann.station.sum.spp5$YEAR, 
-                                                                         Station=ns.ann.station.sum.spp5$LOCATION), FUN=sum)%>%
-  renameCol('x','StationKGHA')
 
-ns.summary2 <- ns.ann.station.sum.spp5%>% 
-  group_by(YEAR) %>% 
-  summarise_all(funs(mean,median,sd,std.error))%>%
-  select(c(1,3,5,7,9))
+##10 year chunks for means
+ns.85.94<-subset(ns.summary, YEAR>1984&YEAR<1995)
+ns.95.04<-subset(ns.summary, YEAR>1994&YEAR<2005)
+ns.05.14<-subset(ns.summary, YEAR>2004&YEAR<2015)
 
-ns.yr5meansmelt<-subset(ns.summary2, YEAR>=(max(YEAR)-4))
-ns.yr10meansmelt<-subset(ns.summary2, YEAR>=(max(YEAR)-9))
-ns.yr20meansmelt<-subset(ns.summary2, YEAR>=(max(YEAR)-19))
-ns.yr30meansmelt<-subset(ns.summary2, YEAR>=(max(YEAR)-29))
-ns.yr40meansmelt<-subset(ns.summary2, YEAR>=(max(YEAR)-39))
-
-ggplot(ns.summary2, aes(x=YEAR, y=StationKGHA_mean))+
+##ns mean biomass with 10 year chunk means
+ggplot(ns.summary, aes(x=YEAR, y=StationKGHA_mean))+
   geom_bar(stat='identity', fill='grey75', color='black')+
   plot_theme+
   labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
-       title='Lake Superior Nearshore Rainbow Smelt Biomass',
+       title='Lake Superior Nearshore Fish Biomass',
        subtitle='USGS bottom trawl assessment')+
   scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
                      labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
-  geom_errorbar(data=ns.summary2, aes(x=YEAR, ymin=StationKGHA_mean-StationKGHA_std.error, ymax=StationKGHA_mean+StationKGHA_std.error),
+  geom_errorbar(data=ns.summary, aes(x=YEAR, ymin=StationKGHA_mean-StationKGHA_std.error, ymax=StationKGHA_mean+StationKGHA_std.error),
                 width=0.4)+
-  scale_y_continuous(expand=c(0,0), breaks=c(5,10,15,20,25), labels=c('5','10','15','20','25'), limits=c(0,6))+
-  geom_segment(x=(max(ns.summary2$YEAR)-4), xend=max(ns.summary2$YEAR), y=mean(ns.yr5meansmelt$StationKGHA_mean), #5 year mean
-               yend=mean(ns.yr5meansmelt$StationKGHA_mean), size=1.5, color='mediumorchid4')+
-  geom_segment(x=(max(ns.summary2$YEAR)-9), xend=max(ns.summary2$YEAR), y=mean(ns.yr10meansmelt$StationKGHA_mean), #10 year mean
-               yend=mean(ns.yr10meansmelt$StationKGHA_mean), size=1.5, color='darkolivegreen4')+
-  geom_segment(x=(max(ns.summary2$YEAR)-19), xend=max(ns.summary2$YEAR), y=mean(ns.yr20meansmelt$StationKGHA_mean), #20 year mean
-               yend=mean(ns.yr20meansmelt$StationKGHA_mean), size=1.5, color='cyan4')+
-  geom_segment(x=(max(ns.summary2$YEAR)-29), xend=max(ns.summary2$YEAR), y=mean(ns.yr30meansmelt$StationKGHA_mean), #30 year mean
-               yend=mean(ns.yr30meansmelt$StationKGHA_mean), size=1.5, color='lightpink3')+
-  geom_segment(x=(max(ns.summary2$YEAR)-39), xend=max(ns.summary2$YEAR), y=mean(ns.yr40meansmelt$StationKGHA_mean), #40 year mean
-               yend=mean(ns.yr40meansmelt$StationKGHA_mean), size=1.5, color='darkorange')
+  scale_y_continuous(expand=c(0,0), breaks=c(5,10,15,20,25), labels=c('5','10','15','20','25'))+
+  geom_rect(xmin=2005, xmax=2014, ymin=(mean(ns.05.14$StationKGHA_mean)-1), 
+            ymax=(mean(ns.05.14$StationKGHA_mean+1)), fill='deeppink', alpha=0.03)+
+  geom_rect(xmin=1995, xmax=2004, ymin=(mean(ns.95.04$StationKGHA_mean)-1), 
+            ymax=(mean(ns.95.04$StationKGHA_mean)+1), fill='deeppink', alpha=0.03)+
+  geom_rect(xmin=1985, xmax=1994, ymin=(mean(ns.85.94$StationKGHA_mean)-1), 
+            ymax=(mean(ns.85.94$StationKGHA_mean)+1), fill='deeppink', alpha=0.03)
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_10yrmeans.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
 
-ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_smelt.png'), dpi = 300, width = 40, height = 20, units = "cm") 
-
-ggplot(ns.summary2, aes(x=YEAR, y=StationKGHA_mean))+
+ggplot(ns.summary, aes(x=YEAR, y=StationKGHA_mean))+
   geom_bar(stat='identity', fill='grey75', color='black')+
   plot_theme+
   labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
-       title='Lake Superior Nearshore Rainbow Smelt Biomass',
+       title='Lake Superior Nearshore Fish Biomass',
        subtitle='USGS bottom trawl assessment')+
   scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
                      labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
-  geom_errorbar(data=ns.summary2, aes(x=YEAR, ymin=StationKGHA_mean-StationKGHA_std.error, ymax=StationKGHA_mean+StationKGHA_std.error),
+  geom_errorbar(data=ns.summary, aes(x=YEAR, ymin=StationKGHA_mean-StationKGHA_std.error, ymax=StationKGHA_mean+StationKGHA_std.error),
                 width=0.4)+
-  scale_y_continuous(expand=c(0,0), breaks=c(5,10,15,20,25), labels=c('5','10','15','20','25'), limits=c(0,6))
+  scale_y_continuous(expand=c(0,0), breaks=c(5,10,15,20,25), labels=c('5','10','15','20','25'))+
+  geom_rect(xmin=2005, xmax=2014, ymin=(mean(ns.05.14$StationKGHA_mean)-1), 
+               ymax=(mean(ns.05.14$StationKGHA_mean+1)), fill='deeppink', alpha=0.03)+
+  geom_rect(xmin=1995, xmax=2004, ymin=(mean(ns.95.04$StationKGHA_mean)-1), 
+               ymax=(mean(ns.95.04$StationKGHA_mean)+1), fill='deeppink', alpha=0.03)+
+  geom_rect(xmin=1985, xmax=1994, ymin=(mean(ns.85.94$StationKGHA_mean)-1), 
+               ymax=(mean(ns.85.94$StationKGHA_mean)+1), fill='deeppink', alpha=0.03)+
+  geom_segment(x=(max(ns.summary$YEAR)-4), xend=max(ns.summary$YEAR), y=mean(ns.yr5mean$StationKGHA_mean), #5 year mean
+               yend=mean(ns.yr5mean$StationKGHA_mean), size=1.5, color='mediumorchid4')+
+  geom_segment(x=(max(ns.summary$YEAR)-9), xend=max(ns.summary$YEAR), y=mean(ns.yr10mean$StationKGHA_mean), #10 year mean
+               yend=mean(ns.yr10mean$StationKGHA_mean), size=1.5, color='darkolivegreen4')+
+  geom_segment(x=(max(ns.summary$YEAR)-19), xend=max(ns.summary$YEAR), y=mean(ns.yr20mean$StationKGHA_mean), #20 year mean
+               yend=mean(ns.yr20mean$StationKGHA_mean), size=1.5, color='cyan4')+
+  geom_segment(x=(max(ns.summary$YEAR)-29), xend=max(ns.summary$YEAR), y=mean(ns.yr30mean$StationKGHA_mean), #30 year mean
+               yend=mean(ns.yr30mean$StationKGHA_mean), size=1.5, color='lightpink3')+
+  geom_segment(x=(max(ns.summary$YEAR)-39), xend=max(ns.summary$YEAR), y=mean(ns.yr40mean$StationKGHA_mean), #40 year mean
+               yend=mean(ns.yr40mean$StationKGHA_mean), size=1.5, color='darkorange')
 
-ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_smelt_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+##save plot to the folder you assigned as the working directory
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_10yrmeans_overallmeans.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
 
 ##calculate summary statistics WITH SPECIES
-ns.ann.station.sum.spp<-aggregate(ns$KGHA, by=list(YEAR=ns$YEAR, Station=ns$LOCATION, Species=ns$SPECIES), FUN=sum)%>%
+ns.ann.station.sum.spp.all<-aggregate(ns$KGHA, by=list(YEAR=ns$YEAR, Station=ns$LOCATION, Species=ns$SPECIES), FUN=sum)%>%
   renameCol('x','StationKGHA')
-ns.ann.station.sum.spp<-cast(ns.ann.station.sum.spp, YEAR+Station~Species)
-ns.ann.station.sum.spp[is.na(ns.ann.station.sum.spp)]<-0
-ns.ann.station.sum.spp<-melt(ns.ann.station.sum.spp, id=c('YEAR','Station'))
-ns.ann.station.sum.spp<-renameCol(ns.ann.station.sum.spp,'value','KGHA')
+ns.ann.station.sum.spp.all<-cast(ns.ann.station.sum.spp.all, YEAR+Station~Species)
+ns.ann.station.sum.spp.all[is.na(ns.ann.station.sum.spp.all)]<-0
+ns.ann.station.sum.spp.all<-melt(ns.ann.station.sum.spp.all, id=c('YEAR','Station'))
+ns.ann.station.sum.spp.all<-renameCol(ns.ann.station.sum.spp.all,'value','KGHA')
 
 ns.spp.categories<-data.frame(Spp=c('Cisco','Lake Whitefish','Bloater'), Species=c(202,203,204)) ##change the species you want to single out here
-ns.ann.station.sum.spp<-merge.data.frame(ns.ann.station.sum.spp, ns.spp.categories, all=T)
+ns.ann.station.sum.spp<-merge.data.frame(ns.ann.station.sum.spp.all, ns.spp.categories, all=T)
 ns.ann.station.sum.spp<- ns.ann.station.sum.spp%>% mutate(Spp=fct_explicit_na(Spp, na_level='Other')) ##species not specified in the lines above = other
 
 #ns.ann.station.sum.spp$Spp<-if_else(ns.ann.station.sum.spp$Species==202|ns.ann.station.sum.spp$Species==204,'Cisco & Bloater','Other')
@@ -352,6 +355,479 @@ ggplot(ns.ann.station.sum.spp4, aes(x=YEAR, y=meanKGHA, fill=Spp))+
   scale_fill_manual(name=' ', values=c('palegreen3', 'lightblue3','lightpink3'))+
   theme(legend.position=c(0.8,0.8))
 ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_ciscobloater_lwf.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+##RAINBOW SMELT
+ns.ann.station.sum.smelt<-filter(ns.ann.station.sum.spp.all, Species==109)
+ns.ann.station.sum.smelt<-select(ns.ann.station.sum.smelt, c(1:3))
+ns.summary.smelt <- ns.ann.station.sum.smelt%>% 
+  group_by(YEAR) %>% 
+  summarise_all(funs(mean,median,sd,std.error))%>%
+  select(c(1,3,5,7,9))
+
+ns.yr5meansmelt<-subset(ns.summary.smelt, YEAR>=(max(YEAR)-4))
+ns.yr10meansmelt<-subset(ns.summary.smelt, YEAR>=(max(YEAR)-9))
+ns.yr20meansmelt<-subset(ns.summary.smelt, YEAR>=(max(YEAR)-19))
+ns.yr30meansmelt<-subset(ns.summary.smelt, YEAR>=(max(YEAR)-29))
+ns.yr40meansmelt<-subset(ns.summary.smelt, YEAR>=(max(YEAR)-39))
+
+ggplot(ns.summary.smelt, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Rainbow Smelt Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.smelt, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0), breaks=c(1,2,3,4,5), labels=c('1','2','3','4','5'), limits=c(0,6))+
+  geom_segment(x=(max(ns.summary.smelt$YEAR)-4), xend=max(ns.summary.smelt$YEAR), y=mean(ns.yr5meansmelt$KGHA_mean), #5 year mean
+               yend=mean(ns.yr5meansmelt$KGHA_mean), size=1.5, color='mediumorchid4')+
+  geom_segment(x=(max(ns.summary.smelt$YEAR)-9), xend=max(ns.summary.smelt$YEAR), y=mean(ns.yr10meansmelt$KGHA_mean), #10 year mean
+               yend=mean(ns.yr10meansmelt$KGHA_mean), size=1.5, color='darkolivegreen4')+
+  geom_segment(x=(max(ns.summary.smelt$YEAR)-19), xend=max(ns.summary.smelt$YEAR), y=mean(ns.yr20meansmelt$KGHA_mean), #20 year mean
+               yend=mean(ns.yr20meansmelt$KGHA_mean), size=1.5, color='cyan4')+
+  geom_segment(x=(max(ns.summary.smelt$YEAR)-29), xend=max(ns.summary.smelt$YEAR), y=mean(ns.yr30meansmelt$KGHA_mean), #30 year mean
+               yend=mean(ns.yr30meansmelt$KGHA_mean), size=1.5, color='lightpink3')+
+  geom_segment(x=(max(ns.summary.smelt$YEAR)-39), xend=max(ns.summary.smelt$YEAR), y=mean(ns.yr40meansmelt$KGHA_mean), #40 year mean
+               yend=mean(ns.yr40meansmelt$KGHA_mean), size=1.5, color='darkorange')
+
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_smelt.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+ggplot(ns.summary.smelt, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Rainbow Smelt Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.smelt, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0), breaks=c(1,2,3,4,5), labels=c('1','2','3','4','5'), limits=c(0,6))
+  
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_smelt_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+##BLOATER
+ns.ann.station.sum.bloater<-filter(ns.ann.station.sum.spp.all, Species==204)
+ns.ann.station.sum.bloater<-select(ns.ann.station.sum.bloater, c(1:3))
+ns.summary.bloater <- ns.ann.station.sum.bloater%>% 
+  group_by(YEAR) %>% 
+  summarise_all(funs(mean,median,sd,std.error))%>%
+  select(c(1,3,5,7,9))
+
+ns.yr5meanbloater<-subset(ns.summary.bloater, YEAR>=(max(YEAR)-4))
+ns.yr10meanbloater<-subset(ns.summary.bloater, YEAR>=(max(YEAR)-9))
+ns.yr20meanbloater<-subset(ns.summary.bloater, YEAR>=(max(YEAR)-19))
+ns.yr30meanbloater<-subset(ns.summary.bloater, YEAR>=(max(YEAR)-29))
+ns.yr40meanbloater<-subset(ns.summary.bloater, YEAR>=(max(YEAR)-39))
+
+ggplot(ns.summary.bloater, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Bloater Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.bloater, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))+
+  geom_segment(x=(max(ns.summary.bloater$YEAR)-4), xend=max(ns.summary.bloater$YEAR), y=mean(ns.yr5meanbloater$KGHA_mean), #5 year mean
+               yend=mean(ns.yr5meanbloater$KGHA_mean), size=1.5, color='mediumorchid4')+
+  geom_segment(x=(max(ns.summary.bloater$YEAR)-9), xend=max(ns.summary.bloater$YEAR), y=mean(ns.yr10meanbloater$KGHA_mean), #10 year mean
+               yend=mean(ns.yr10meanbloater$KGHA_mean), size=1.5, color='darkolivegreen4')+
+  geom_segment(x=(max(ns.summary.bloater$YEAR)-19), xend=max(ns.summary.bloater$YEAR), y=mean(ns.yr20meanbloater$KGHA_mean), #20 year mean
+               yend=mean(ns.yr20meanbloater$KGHA_mean), size=1.5, color='cyan4')+
+  geom_segment(x=(max(ns.summary.bloater$YEAR)-29), xend=max(ns.summary.bloater$YEAR), y=mean(ns.yr30meanbloater$KGHA_mean), #30 year mean
+               yend=mean(ns.yr30meanbloater$KGHA_mean), size=1.5, color='lightpink3')+
+  geom_segment(x=(max(ns.summary.bloater$YEAR)-39), xend=max(ns.summary.bloater$YEAR), y=mean(ns.yr40meanbloater$KGHA_mean), #40 year mean
+               yend=mean(ns.yr40meanbloater$KGHA_mean), size=1.5, color='darkorange')
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_bloater.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
+ggplot(ns.summary.bloater, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Bloater Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.bloater, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_bloater_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+##PYGMY WHITEFISH
+ns.ann.station.sum.pwf<-filter(ns.ann.station.sum.spp.all, Species==211)
+ns.ann.station.sum.pwf<-select(ns.ann.station.sum.pwf, c(1:3))
+ns.summary.pwf <- ns.ann.station.sum.pwf%>% 
+  group_by(YEAR) %>% 
+  summarise_all(funs(mean,median,sd,std.error))%>%
+  select(c(1,3,5,7,9))
+
+ns.yr5meanpwf<-subset(ns.summary.pwf, YEAR>=(max(YEAR)-4))
+ns.yr10meanpwf<-subset(ns.summary.pwf, YEAR>=(max(YEAR)-9))
+ns.yr20meanpwf<-subset(ns.summary.pwf, YEAR>=(max(YEAR)-19))
+ns.yr30meanpwf<-subset(ns.summary.pwf, YEAR>=(max(YEAR)-29))
+ns.yr40meanpwf<-subset(ns.summary.pwf, YEAR>=(max(YEAR)-39))
+
+ggplot(ns.summary.pwf, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Pygmy Whitefish Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.pwf, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))+
+  geom_segment(x=(max(ns.summary.pwf$YEAR)-4), xend=max(ns.summary.pwf$YEAR), y=mean(ns.yr5meanpwf$KGHA_mean), #5 year mean
+               yend=mean(ns.yr5meanpwf$KGHA_mean), size=1.5, color='mediumorchid4')+
+  geom_segment(x=(max(ns.summary.pwf$YEAR)-9), xend=max(ns.summary.pwf$YEAR), y=mean(ns.yr10meanpwf$KGHA_mean), #10 year mean
+               yend=mean(ns.yr10meanpwf$KGHA_mean), size=1.5, color='darkolivegreen4')+
+  geom_segment(x=(max(ns.summary.pwf$YEAR)-19), xend=max(ns.summary.pwf$YEAR), y=mean(ns.yr20meanpwf$KGHA_mean), #20 year mean
+               yend=mean(ns.yr20meanpwf$KGHA_mean), size=1.5, color='cyan4')+
+  geom_segment(x=(max(ns.summary.pwf$YEAR)-29), xend=max(ns.summary.pwf$YEAR), y=mean(ns.yr30meanpwf$KGHA_mean), #30 year mean
+               yend=mean(ns.yr30meanpwf$KGHA_mean), size=1.5, color='lightpink3')+
+  geom_segment(x=(max(ns.summary.pwf$YEAR)-39), xend=max(ns.summary.pwf$YEAR), y=mean(ns.yr40meanpwf$KGHA_mean), #40 year mean
+               yend=mean(ns.yr40meanpwf$KGHA_mean), size=1.5, color='darkorange')
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_pwf.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
+ggplot(ns.summary.pwf, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Pygmy Whitefish Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.pwf, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_pwf_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+##SLIMY SCULPIN
+ns.ann.station.sum.slimy<-filter(ns.ann.station.sum.spp.all, Species==902)
+ns.ann.station.sum.slimy<-select(ns.ann.station.sum.slimy, c(1:3))
+ns.summary.slimy <- ns.ann.station.sum.slimy%>% 
+  group_by(YEAR) %>% 
+  summarise_all(funs(mean,median,sd,std.error))%>%
+  select(c(1,3,5,7,9))
+
+ns.yr5meanslimy<-subset(ns.summary.slimy, YEAR>=(max(YEAR)-4))
+ns.yr10meanslimy<-subset(ns.summary.slimy, YEAR>=(max(YEAR)-9))
+ns.yr20meanslimy<-subset(ns.summary.slimy, YEAR>=(max(YEAR)-19))
+ns.yr30meanslimy<-subset(ns.summary.slimy, YEAR>=(max(YEAR)-29))
+ns.yr40meanslimy<-subset(ns.summary.slimy, YEAR>=(max(YEAR)-39))
+
+ggplot(ns.summary.slimy, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Slimy Sculpin Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.slimy, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))+
+  geom_segment(x=(max(ns.summary.slimy$YEAR)-4), xend=max(ns.summary.slimy$YEAR), y=mean(ns.yr5meanslimy$KGHA_mean), #5 year mean
+               yend=mean(ns.yr5meanslimy$KGHA_mean), size=1.5, color='mediumorchid4')+
+  geom_segment(x=(max(ns.summary.slimy$YEAR)-9), xend=max(ns.summary.slimy$YEAR), y=mean(ns.yr10meanslimy$KGHA_mean), #10 year mean
+               yend=mean(ns.yr10meanslimy$KGHA_mean), size=1.5, color='darkolivegreen4')+
+  geom_segment(x=(max(ns.summary.slimy$YEAR)-19), xend=max(ns.summary.slimy$YEAR), y=mean(ns.yr20meanslimy$KGHA_mean), #20 year mean
+               yend=mean(ns.yr20meanslimy$KGHA_mean), size=1.5, color='cyan4')+
+  geom_segment(x=(max(ns.summary.slimy$YEAR)-29), xend=max(ns.summary.slimy$YEAR), y=mean(ns.yr30meanslimy$KGHA_mean), #30 year mean
+               yend=mean(ns.yr30meanslimy$KGHA_mean), size=1.5, color='lightpink3')+
+  geom_segment(x=(max(ns.summary.slimy$YEAR)-39), xend=max(ns.summary.slimy$YEAR), y=mean(ns.yr40meanslimy$KGHA_mean), #40 year mean
+               yend=mean(ns.yr40meanslimy$KGHA_mean), size=1.5, color='darkorange')
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_slimysculp.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
+ggplot(ns.summary.slimy, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Slimy Sculpin Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.slimy, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_slimysculp_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+
+##SPOONHEAD SCULPIN
+ns.ann.station.sum.spoon<-filter(ns.ann.station.sum.spp.all, Species==903)
+ns.ann.station.sum.spoon<-select(ns.ann.station.sum.spoon, c(1:3))
+ns.summary.spoon <- ns.ann.station.sum.spoon%>% 
+  group_by(YEAR) %>% 
+  summarise_all(funs(mean,median,sd,std.error))%>%
+  select(c(1,3,5,7,9))
+
+ns.yr5meanspoon<-subset(ns.summary.spoon, YEAR>=(max(YEAR)-4))
+ns.yr10meanspoon<-subset(ns.summary.spoon, YEAR>=(max(YEAR)-9))
+ns.yr20meanspoon<-subset(ns.summary.spoon, YEAR>=(max(YEAR)-19))
+ns.yr30meanspoon<-subset(ns.summary.spoon, YEAR>=(max(YEAR)-29))
+ns.yr40meanspoon<-subset(ns.summary.spoon, YEAR>=(max(YEAR)-39))
+
+ggplot(ns.summary.spoon, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Spoonhead Sculpin Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.spoon, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))+
+  geom_segment(x=(max(ns.summary.spoon$YEAR)-4), xend=max(ns.summary.spoon$YEAR), y=mean(ns.yr5meanspoon$KGHA_mean), #5 year mean
+               yend=mean(ns.yr5meanspoon$KGHA_mean), size=1.5, color='mediumorchid4')+
+  geom_segment(x=(max(ns.summary.spoon$YEAR)-9), xend=max(ns.summary.spoon$YEAR), y=mean(ns.yr10meanspoon$KGHA_mean), #10 year mean
+               yend=mean(ns.yr10meanspoon$KGHA_mean), size=1.5, color='darkolivegreen4')+
+  geom_segment(x=(max(ns.summary.spoon$YEAR)-19), xend=max(ns.summary.spoon$YEAR), y=mean(ns.yr20meanspoon$KGHA_mean), #20 year mean
+               yend=mean(ns.yr20meanspoon$KGHA_mean), size=1.5, color='cyan4')+
+  geom_segment(x=(max(ns.summary.spoon$YEAR)-29), xend=max(ns.summary.spoon$YEAR), y=mean(ns.yr30meanspoon$KGHA_mean), #30 year mean
+               yend=mean(ns.yr30meanspoon$KGHA_mean), size=1.5, color='lightpink3')+
+  geom_segment(x=(max(ns.summary.spoon$YEAR)-39), xend=max(ns.summary.spoon$YEAR), y=mean(ns.yr40meanspoon$KGHA_mean), #40 year mean
+               yend=mean(ns.yr40meanspoon$KGHA_mean), size=1.5, color='darkorange')
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_spoonsculp.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
+ggplot(ns.summary.spoon, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Spoonhead Sculpin Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.spoon, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_spoonsculp_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+
+##SLIMY AND SPOONHEAD SCULPIN TOGETHER
+ns.ann.station.sum.slimyspoon<-filter(ns.ann.station.sum.spp.all, Species==903 | Species==902)
+ns.ann.station.sum.slimyspoon<-select(ns.ann.station.sum.slimyspoon, c(1:3))
+ns.ann.station.sum.slimyspoon<-aggregate(ns.ann.station.sum.slimyspoon$KGHA, by=list(YEAR=ns.ann.station.sum.slimyspoon$YEAR,
+                                                                                     Station=ns.ann.station.sum.slimyspoon$Station),
+                                         FUN=sum) %>%renameCol('x','KGHA')
+ns.summary.slimyspoon <- ns.ann.station.sum.slimyspoon%>% 
+  group_by(YEAR) %>% 
+  summarise_all(funs(mean,median,sd,std.error))%>%
+  select(c(1,3,5,7,9))
+
+ns.yr5meanslimyspoon<-subset(ns.summary.slimyspoon, YEAR>=(max(YEAR)-4))
+ns.yr10meanslimyspoon<-subset(ns.summary.slimyspoon, YEAR>=(max(YEAR)-9))
+ns.yr20meanslimyspoon<-subset(ns.summary.slimyspoon, YEAR>=(max(YEAR)-19))
+ns.yr30meanslimyspoon<-subset(ns.summary.slimyspoon, YEAR>=(max(YEAR)-29))
+ns.yr40meanslimyspoon<-subset(ns.summary.slimyspoon, YEAR>=(max(YEAR)-39))
+
+ggplot(ns.summary.slimyspoon, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Slimy and Spoonhead Sculpin Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))+
+  geom_segment(x=(max(ns.summary.slimyspoon$YEAR)-4), xend=max(ns.summary.slimyspoon$YEAR), y=mean(ns.yr5meanslimyspoon$KGHA_mean), #5 year mean
+               yend=mean(ns.yr5meanslimyspoon$KGHA_mean), size=1.5, color='mediumorchid4')+
+  geom_segment(x=(max(ns.summary.slimyspoon$YEAR)-9), xend=max(ns.summary.slimyspoon$YEAR), y=mean(ns.yr10meanslimyspoon$KGHA_mean), #10 year mean
+               yend=mean(ns.yr10meanslimyspoon$KGHA_mean), size=1.5, color='darkolivegreen4')+
+  geom_segment(x=(max(ns.summary.slimyspoon$YEAR)-19), xend=max(ns.summary.slimyspoon$YEAR), y=mean(ns.yr20meanslimyspoon$KGHA_mean), #20 year mean
+               yend=mean(ns.yr20meanslimyspoon$KGHA_mean), size=1.5, color='cyan4')+
+  geom_segment(x=(max(ns.summary.slimyspoon$YEAR)-29), xend=max(ns.summary.slimyspoon$YEAR), y=mean(ns.yr30meanslimyspoon$KGHA_mean), #30 year mean
+               yend=mean(ns.yr30meanslimyspoon$KGHA_mean), size=1.5, color='lightpink3')+
+  geom_segment(x=(max(ns.summary.slimyspoon$YEAR)-39), xend=max(ns.summary.slimyspoon$YEAR), y=mean(ns.yr40meanslimyspoon$KGHA_mean), #40 year mean
+               yend=mean(ns.yr40meanslimyspoon$KGHA_mean), size=1.5, color='darkorange')
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_slimyspoonsculp.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
+ggplot(ns.summary.slimyspoon, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Slimy and Spoonhead Sculpin Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_slimyspoonsculp_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+
+##TROUT-PERCH
+ns.ann.station.sum.tp<-filter(ns.ann.station.sum.spp.all, Species==131)
+ns.ann.station.sum.tp<-select(ns.ann.station.sum.tp, c(1:3))
+ns.summary.tp <- ns.ann.station.sum.tp%>% 
+  group_by(YEAR) %>% 
+  summarise_all(funs(mean,median,sd,std.error))%>%
+  select(c(1,3,5,7,9))
+
+ns.yr5meantp<-subset(ns.summary.tp, YEAR>=(max(YEAR)-4))
+ns.yr10meantp<-subset(ns.summary.tp, YEAR>=(max(YEAR)-9))
+ns.yr20meantp<-subset(ns.summary.tp, YEAR>=(max(YEAR)-19))
+ns.yr30meantp<-subset(ns.summary.tp, YEAR>=(max(YEAR)-29))
+ns.yr40meantp<-subset(ns.summary.tp, YEAR>=(max(YEAR)-39))
+
+ggplot(ns.summary.tp, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Trout-perch Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.tp, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))+
+  geom_segment(x=(max(ns.summary.tp$YEAR)-4), xend=max(ns.summary.tp$YEAR), y=mean(ns.yr5meantp$KGHA_mean), #5 year mean
+               yend=mean(ns.yr5meantp$KGHA_mean), size=1.5, color='mediumorchid4')+
+  geom_segment(x=(max(ns.summary.tp$YEAR)-9), xend=max(ns.summary.tp$YEAR), y=mean(ns.yr10meantp$KGHA_mean), #10 year mean
+               yend=mean(ns.yr10meantp$KGHA_mean), size=1.5, color='darkolivegreen4')+
+  geom_segment(x=(max(ns.summary.tp$YEAR)-19), xend=max(ns.summary.tp$YEAR), y=mean(ns.yr20meantp$KGHA_mean), #20 year mean
+               yend=mean(ns.yr20meantp$KGHA_mean), size=1.5, color='cyan4')+
+  geom_segment(x=(max(ns.summary.tp$YEAR)-29), xend=max(ns.summary.tp$YEAR), y=mean(ns.yr30meantp$KGHA_mean), #30 year mean
+               yend=mean(ns.yr30meantp$KGHA_mean), size=1.5, color='lightpink3')+
+  geom_segment(x=(max(ns.summary.tp$YEAR)-39), xend=max(ns.summary.tp$YEAR), y=mean(ns.yr40meantp$KGHA_mean), #40 year mean
+               yend=mean(ns.yr40meantp$KGHA_mean), size=1.5, color='darkorange')
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_troutperch.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
+ggplot(ns.summary.tp, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Trout-perch Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.tp, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_troutperch_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+##NINESPINE STICKLEBACK
+ns.ann.station.sum.ninesp<-filter(ns.ann.station.sum.spp.all, Species==130)
+ns.ann.station.sum.ninesp<-select(ns.ann.station.sum.ninesp, c(1:3))
+ns.summary.ninesp<- ns.ann.station.sum.ninesp%>% 
+  group_by(YEAR) %>% 
+  summarise_all(funs(mean,median,sd,std.error))%>%
+  select(c(1,3,5,7,9))
+
+ns.yr5meanninesp<-subset(ns.summary.ninesp, YEAR>=(max(YEAR)-4))
+ns.yr10meanninesp<-subset(ns.summary.ninesp, YEAR>=(max(YEAR)-9))
+ns.yr20meanninesp<-subset(ns.summary.ninesp, YEAR>=(max(YEAR)-19))
+ns.yr30meanninesp<-subset(ns.summary.ninesp, YEAR>=(max(YEAR)-29))
+ns.yr40meanninesp<-subset(ns.summary.ninesp, YEAR>=(max(YEAR)-39))
+
+ggplot(ns.summary.ninesp, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Ninespine Stickleback Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.ninesp, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))+
+  geom_segment(x=(max(ns.summary.ninesp$YEAR)-4), xend=max(ns.summary.ninesp$YEAR), y=mean(ns.yr5meanninesp$KGHA_mean), #5 year mean
+               yend=mean(ns.yr5meanninesp$KGHA_mean), size=1.5, color='mediumorchid4')+
+  geom_segment(x=(max(ns.summary.ninesp$YEAR)-9), xend=max(ns.summary.ninesp$YEAR), y=mean(ns.yr10meanninesp$KGHA_mean), #10 year mean
+               yend=mean(ns.yr10meanninesp$KGHA_mean), size=1.5, color='darkolivegreen4')+
+  geom_segment(x=(max(ns.summary.ninesp$YEAR)-19), xend=max(ns.summary.ninesp$YEAR), y=mean(ns.yr20meanninesp$KGHA_mean), #20 year mean
+               yend=mean(ns.yr20meanninesp$KGHA_mean), size=1.5, color='cyan4')+
+  geom_segment(x=(max(ns.summary.ninesp$YEAR)-29), xend=max(ns.summary.ninesp$YEAR), y=mean(ns.yr30meanninesp$KGHA_mean), #30 year mean
+               yend=mean(ns.yr30meanninesp$KGHA_mean), size=1.5, color='lightpink3')+
+  geom_segment(x=(max(ns.summary.ninesp$YEAR)-39), xend=max(ns.summary.ninesp$YEAR), y=mean(ns.yr40meanninesp$KGHA_mean), #40 year mean
+               yend=mean(ns.yr40meanninesp$KGHA_mean), size=1.5, color='darkorange')
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_ninespine.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
+ggplot(ns.summary.ninesp, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Ninespine Stickleback Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.ninesp, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_ninespine_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+
+##LONGNOSE SUCKER!!!
+ns.ann.station.sum.lns<-filter(ns.ann.station.sum.spp.all, Species==404)
+ns.ann.station.sum.lns<-select(ns.ann.station.sum.lns, c(1:3))
+ns.summary.lns<- ns.ann.station.sum.lns%>% 
+  group_by(YEAR) %>% 
+  summarise_all(funs(mean,median,sd,std.error))%>%
+  select(c(1,3,5,7,9))
+
+ns.yr5meanlns<-subset(ns.summary.lns, YEAR>=(max(YEAR)-4))
+ns.yr10meanlns<-subset(ns.summary.lns, YEAR>=(max(YEAR)-9))
+ns.yr20meanlns<-subset(ns.summary.lns, YEAR>=(max(YEAR)-19))
+ns.yr30meanlns<-subset(ns.summary.lns, YEAR>=(max(YEAR)-29))
+ns.yr40meanlns<-subset(ns.summary.lns, YEAR>=(max(YEAR)-39))
+
+ggplot(ns.summary.lns, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Longnose Sucker Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.lns, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))+
+  geom_segment(x=(max(ns.summary.lns$YEAR)-4), xend=max(ns.summary.lns$YEAR), y=mean(ns.yr5meanlns$KGHA_mean), #5 year mean
+               yend=mean(ns.yr5meanlns$KGHA_mean), size=1.5, color='mediumorchid4')+
+  geom_segment(x=(max(ns.summary.lns$YEAR)-9), xend=max(ns.summary.lns$YEAR), y=mean(ns.yr10meanlns$KGHA_mean), #10 year mean
+               yend=mean(ns.yr10meanlns$KGHA_mean), size=1.5, color='darkolivegreen4')+
+  geom_segment(x=(max(ns.summary.lns$YEAR)-19), xend=max(ns.summary.lns$YEAR), y=mean(ns.yr20meanlns$KGHA_mean), #20 year mean
+               yend=mean(ns.yr20meanlns$KGHA_mean), size=1.5, color='cyan4')+
+  geom_segment(x=(max(ns.summary.lns$YEAR)-29), xend=max(ns.summary.lns$YEAR), y=mean(ns.yr30meanlns$KGHA_mean), #30 year mean
+               yend=mean(ns.yr30meanlns$KGHA_mean), size=1.5, color='lightpink3')+
+  geom_segment(x=(max(ns.summary.lns$YEAR)-39), xend=max(ns.summary.lns$YEAR), y=mean(ns.yr40meanlns$KGHA_mean), #40 year mean
+               yend=mean(ns.yr40meanlns$KGHA_mean), size=1.5, color='darkorange')
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_longnose.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
+ggplot(ns.summary.lns, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Longnose Sucker Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.lns, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_longnose_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
 
 ##biomass at individual stations for the current sampling year, ranked by biomass--------------------------------BIOMASS BY STATION-----
 ##summarize nearshore data
@@ -437,18 +913,18 @@ ns<-subset(all.data, TARGET==2 & YEAR==max(YEAR))
 
 ##calculate mean biomass by year, start by getting total kgha for each station
 ns.ann.station.sum<-aggregate(ns$KGHA, by=list(YEAR=ns$YEAR, Station=ns$LOCATION,
-                                                   BEG_LONGITUDE_DD=ns$BEG_LONGITUDE_DD,
-                                                   BEG_LATITUDE_DD=ns$BEG_LATITUDE_DD), FUN=sum)%>%
+                                                   Mid.Long.DD=ns$Mid.Long.DD,
+                                                   Mid.Lat.DD=ns$Mid.Lat.DD), FUN=sum)%>%
   renameCol('x','StationKGHA')
 
 ##create map with stations color coded by biomass
-nsbiomap2<-ggplot(ns.ann.station.sum, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
+nsbiomap2<-ggplot(ns.ann.station.sum, aes(Mid.Long.DD, Mid.Lat.DD)) +
   theme_bw() +
   scale_y_continuous()+
   scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
                      labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
-  geom_point(data=ns.ann.station.sum, mapping=aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD, color=StationKGHA), size=6, stroke=1.5)+
+  geom_point(data=ns.ann.station.sum, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=StationKGHA), size=6, stroke=1.5)+
   scale_color_gradient(low='cadetblue2', high='red', name='Biomass\n(kg per ha)')+
   map_theme+
   geom_text(aes(label=Station))+
@@ -459,13 +935,13 @@ nsbiomap2<-ggplot(ns.ann.station.sum, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
 
 ggsave(plot=nsbiomap2,here('Plots and Tables/RVCAT','ns_sites_biomass_map2.png'), dpi = 300, width = 30, height = 16, units = "cm")
 
-nsbiomap<-ggplot(ns.ann.station.sum, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
+nsbiomap<-ggplot(ns.ann.station.sum, aes(Mid.Long.DD, Mid.Lat.DD)) +
   theme_bw() +
   scale_y_continuous()+
   scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
                      labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
-  geom_point(data=ns.ann.station.sum, mapping=aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD, color=StationKGHA), size=6, stroke=1.5)+
+  geom_point(data=ns.ann.station.sum, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=StationKGHA), size=6, stroke=1.5)+
   scale_color_gradient(low='cadetblue2', high='red', name='Biomass\n(kg per ha)')+
   map_theme+
   geom_text(aes(label=Station))+
@@ -690,8 +1166,8 @@ ggsave(plot=skewstation2,here('Plots and Tables/RVCAT','os_station_skewness.png'
 
 ##offshore map with sites coded by biomass for inset into bar plot
 os.ann.station.sum<-aggregate(os$KGHA, by=list(YEAR=os$YEAR, Station=os$LOCATION,
-                                                     BEG_LONGITUDE_DD=os$BEG_LONGITUDE_DD,
-                                                     BEG_LATITUDE_DD=os$BEG_LATITUDE_DD), FUN=sum)%>%
+                                                     Mid.Long.DD=os$Mid.Long.DD,
+                                                     Mid.Lat.DD=os$Mid.Lat.DD), FUN=sum)%>%
   renameCol('x','StationKGHA')
 os.ann.station.sum2<-os.ann.station.sum%>%
   filter(YEAR==max(YEAR))
@@ -702,13 +1178,13 @@ ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
 ls_poly.fort <- fortify(ls_poly)
 
 ##map of offshore sites color ranked by biomass
-osbiomap2<-ggplot(os.ann.station.sum2, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
+osbiomap2<-ggplot(os.ann.station.sum2, aes(Mid.Long.DD, Mid.Lat.DD)) +
   theme_bw()+
   scale_y_continuous(name='Latitude')+
   scale_x_continuous(name='Longitude', breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
                      labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
-  geom_point(data=os.ann.station.sum2, mapping=aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD, color=StationKGHA), size=6, stroke=1.5)+
+  geom_point(data=os.ann.station.sum2, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=StationKGHA), size=6, stroke=1.5)+
   scale_color_gradient(low='cadetblue2', high='red', name='Biomass\n(kg per ha)')+
   map_theme+
   geom_text(aes(label=Station))+
@@ -718,13 +1194,13 @@ osbiomap2<-ggplot(os.ann.station.sum2, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
 
 ggsave(plot=osbiomap2,here('Plots and Tables/RVCAT','os_sites_biomass_map2.png'), dpi = 300, width = 30, height = 16, units = "cm")
 
-osbiomap<-ggplot(os.ann.station.sum2, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
+osbiomap<-ggplot(os.ann.station.sum2, aes(Mid.Long.DD, Mid.Lat.DD)) +
   theme_bw()+
   scale_y_continuous(name='Latitude')+
   scale_x_continuous(name='Longitude', breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
                      labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
-  geom_point(data=os.ann.station.sum2, mapping=aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD, color=StationKGHA), size=6, stroke=1.5)+
+  geom_point(data=os.ann.station.sum2, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=StationKGHA), size=6, stroke=1.5)+
   scale_color_gradient(low='cadetblue2', high='red', name='Biomass\n(kg per ha)')+
   map_theme+
   geom_text(aes(label=Station))
@@ -752,8 +1228,8 @@ ggsave(plot=osbiomapbars,here('Plots and Tables/RVCAT','os_station_biomass_map_b
 
 ##animated plot of offshore biomass at each station across years---------------------------------------------------------------------
 os.ann.station.sum<-aggregate(os$KGHA, by=list(YEAR=os$YEAR, Station=os$LOCATION,
-                                               BEG_LONGITUDE_DD=os$BEG_LONGITUDE_DD,
-                                               BEG_LATITUDE_DD=os$BEG_LATITUDE_DD), FUN=sum)%>%
+                                               Mid.Long.DD=os$Mid.Long.DD,
+                                               Mid.Lat.DD=os$Mid.Lat.DD), FUN=sum)%>%
   renameCol('x','StationKGHA')
 os.ann.station.sum2<-os.ann.station.sum%>%
   filter(YEAR==max(YEAR))
@@ -763,13 +1239,13 @@ ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "lake_s
 ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
 ls_poly.fort <- fortify(ls_poly)
 
-os_map1<-ggplot(os.ann.station.sum, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
+os_map1<-ggplot(os.ann.station.sum, aes(Mid.Long.DD, Mid.Lat.DD)) +
   theme_bw() +
   scale_y_continuous(name='Latitude')+
   scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
                      labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
-  geom_point(data=os.ann.station.sum, mapping=aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD, size=StationKGHA, color=StationKGHA), stroke=1.5)+
+  geom_point(data=os.ann.station.sum, mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=StationKGHA, color=StationKGHA), stroke=1.5)+
   scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), limits=c(0,30), breaks=seq(0,30, by=5))+
   scale_color_continuous(high='red',low='cadetblue2',name=expression(underline('Biomass (kg per ha)')), limits=c(0,30), 
                          breaks=seq(0,30, by=5))+
@@ -867,6 +1343,26 @@ ggplot(os.spp.compare.mean, aes(x=YEAR, y=mean))+
 
 ggsave(here('Plots and Tables/RVCAT','os_spp_biomass_annual.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
+
+##KIYI
+os.biomass.kiyi<-filter(os.spp.compare.mean,SPECIES==206)
+
+ggplot(os.biomass.kiyi, aes(x=YEAR, y=mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Offshore Kiyi Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
+                     labels=c('2011','2013','2015','2017','2019','2021','2023'),
+                     limits=c(2010, 2020))+
+  geom_errorbar(data=os.biomass.kiyi, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+ggsave(here('Plots and Tables/RVCAT','os_annual_biomass_kiyi_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+
+
 ##Chequamegon Bay######################################################################################################Cheq Bay#####
 cheq<-subset(all.data, TARGET==106)
 
@@ -956,13 +1452,13 @@ all.current.yr<-all.data%>%
   filter(TARGET==2|TARGET==117|TARGET==118)
 all.current.yr$TARGET_f<-as.factor(all.current.yr$TARGET)
 
-ggplot(all.current.yr, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
+ggplot(all.current.yr, aes(Mid.Long.DD, Mid.Lat.DD)) +
   theme_bw() +
   scale_y_continuous(name='Latitude')+
   scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
                      labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
-  geom_point(data=all.current.yr, mapping=aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD, color=TARGET_f), size=6, stroke=1.5)+
+  geom_point(data=all.current.yr, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=TARGET_f), size=6, stroke=1.5)+
   scale_color_manual(values=c('salmon','cadetblue2'), name='Survey', labels=c('Nearshore','Offshore'))+
   map_theme+
   geom_text(aes(label=LOCATION))+
@@ -1275,7 +1771,7 @@ a1.cisco<-age1.cast%>%
   filter(YEAR>1977) ##select the years you want to map here
 a1.cisco<-aggregate(a1.cisco$value, by=list(YEAR=a1.cisco$YEAR, LOCATION=a1.cisco$LOCATION), FUN=sum)%>%
   renameCol('x','value')
-latlong<-select(all.data, c(4,5,8,12,13))
+latlong<-select(all.data, c(4,5,8,32,33))
 latlong<-latlong%>%
   filter(TARGET==2)
 latlong<-latlong[!duplicated(latlong$LOCATION),] ##get coordinates for each site 
@@ -1288,9 +1784,9 @@ ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "lake_s
 ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
 ls_poly.fort <- fortify(ls_poly)
 
-cisco<-ggplot(a1.cisco2, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
+cisco<-ggplot(a1.cisco2, aes(Mid.Long.DD, Mid.Lat.DD)) +
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ ##path for lake outline
-  geom_point(data=a1.cisco2, mapping=aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD, color=log(value), size=log(value)))+ 
+  geom_point(data=a1.cisco2, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=log(value), size=log(value)))+ 
   theme_bw() + 
   scale_y_continuous(name='Latitude')+
   scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
@@ -1370,7 +1866,7 @@ a1.current<-a1.current%>%
   filter(YEAR==max(YEAR))
 dates<-all.data%>%
   filter(YEAR==max(YEAR))
-dates<-select(dates, c(2,8, 12, 13))
+dates<-select(dates, c(2,8, 32,33))
 dates<-dates[!duplicated(dates$LOCATION),]
 a1.current<-merge.data.frame(a1.current, dates, all=F)
 a1.current<-merge.data.frame(a1.current, sci.names)
@@ -1382,13 +1878,13 @@ ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
 ls_poly.fort <- fortify(ls_poly)
 
 ##create map with stations color coded by biomass
-a1map<-ggplot(a1.current, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
+a1map<-ggplot(a1.current, aes(Mid.Long.DD, Mid.Lat.DD)) +
   theme_bw() +
   scale_y_continuous()+
   scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
                      labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
-  geom_point(data=a1.current, mapping=aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD, color=a1presence), size=6, stroke=1.5)+
+  geom_point(data=a1.current, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=a1presence), size=6, stroke=1.5)+
   scale_color_manual(values=c('gray85','red'), name='Age-1 occurrence')+
   map_theme+
   geom_text(aes(label=LOCATION))+
@@ -1396,13 +1892,13 @@ a1map<-ggplot(a1.current, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
 
 ggsave(plot=a1map,here('Plots and Tables/RVCAT','ns_Age1_sites_abundance_map.png'), dpi = 300, width = 30, height = 16, units = "cm")
 
-a1map2<-ggplot(a1.current, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
+a1map2<-ggplot(a1.current, aes(Mid.Long.DD, Mid.Lat.DD)) +
   theme_bw() +
   scale_y_continuous()+
   scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
                      labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
-  geom_point(data=a1.current, mapping=aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD, color=a1presence), size=6, stroke=1.5)+
+  geom_point(data=a1.current, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=a1presence), size=6, stroke=1.5)+
   scale_color_manual(values=c('gray85','red'), name='Age-1 occurrence')+
   map_theme+
   geom_text(aes(label=LOCATION))+
@@ -1435,8 +1931,8 @@ all.current.yr<-all.data%>%
   filter(YEAR==max(YEAR))%>% ##if you want a year other than the most recent, change this to YEAR==desired year (ie YEAR==2010)
   filter(TARGET==2|TARGET==117|TARGET==118)
 all.current.yr$TARGET_f<-as.factor(all.current.yr$TARGET)
-all.current.yr.totals<-aggregate(all.current.yr$NUM, by=list(BEG_LATITUDE_DD=all.current.yr$BEG_LATITUDE_DD,
-                                                         BEG_LONGITUDE_DD=all.current.yr$BEG_LONGITUDE_DD,
+all.current.yr.totals<-aggregate(all.current.yr$NUM, by=list(Mid.Lat.DD=all.current.yr$Mid.Lat.DD,
+                                                         Mid.Long.DD=all.current.yr$Mid.Long.DD,
                                                          TARGET=all.current.yr$TARGET_f,
                                                          DATE=all.current.yr$OP_DATE,
                                                          TIME=all.current.yr$TIME), FUN=sum)%>%
@@ -1448,9 +1944,9 @@ ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "lake_s
 ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
 ls_poly.fort <- fortify(ls_poly)
 
-p<-ggplot(all.current.yr.totals, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
+p<-ggplot(all.current.yr.totals, aes(Mid.Long.DD, Mid.Lat.DD)) +
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ ##path for lake outline
-  geom_path(data=all.current.yr.totals, mapping=aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD), size=1)+ ##path for lines connecting sites
+  geom_path(data=all.current.yr.totals, mapping=aes(Mid.Long.DD, Mid.Lat.DD), size=1)+ ##path for lines connecting sites
   geom_point(aes(group=seq_along(Order), color=TARGET), size=6, alpha=0.6)+ 
   theme_bw() + 
   scale_y_continuous(name='Latitude')+
@@ -1573,9 +2069,9 @@ r_gif<-animate(r, nframes = 150, fps = 5, end_pause = 60, width = 500, height = 
 
 r_gif
 
-p<-ggplot(all.current.yr.totals, aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD)) +
+p<-ggplot(all.current.yr.totals, aes(Mid.Long.DD, Mid.Lat.DD)) +
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ ##path for lake outline
-  geom_path(data=all.current.yr.totals, mapping=aes(BEG_LONGITUDE_DD, BEG_LATITUDE_DD), size=1)+ ##path for lines connecting sites
+  geom_path(data=all.current.yr.totals, mapping=aes(Mid.Long.DD, Mid.Lat.DD), size=1)+ ##path for lines connecting sites
   geom_point(aes(group=seq_along(Order), color=TARGET), size=6, alpha=0.6)+ 
   theme_bw() + 
   scale_y_continuous(name='Latitude')+
