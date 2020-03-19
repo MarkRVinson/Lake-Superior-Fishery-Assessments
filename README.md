@@ -1,7 +1,9 @@
 # RVCAT
 R project that contains a suite of data and R programs for summarizing and presenting RVCAT data for Lake Superior
 <br>
-![Image description](ns_annual_biomass_ciscobloater_lwf.png)
+<br>
+[<img src="ns_annual_biomass_ciscobloater_lwf.png?raw=true"/>](ns_annual_biomass_ciscobloater_lwf.png) 
+<br>
 <br>
 ## Directories
 /Data
