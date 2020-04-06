@@ -22,22 +22,20 @@ R project that contains a suite of data and R programs for summarizing and prese
 
 /Plots and Tables -- separate folders by discipline where the created tables and plots are stored
   1. /Ice_Temp
-  2. /Lengths
-  3. /RVCAT
-  4. /Stomachs
+  2. /Length Bin Densities
+  3. /Lengths
+  4. /RVCAT
+  5. /Stomachs
 
 /R Markdown
-1. wordstyles.docx
-2. RVCAT_report.docx
-3. RVCAT_report.Rmd
-4. RVCAT_species_summaries.docx
-5. RVCAT_species_summaries.Rmd
-6. RVCAT_station_descriptions.docx
-7. RVCAT_station_descriptions.Rmd
+1. RVCAT_report.Rmd, annual report GLFC meeting
+2. RVCAT_species_summaries.Rmd, standard summary of collections by species, one page per species
+3. RVCAT_station_descriptions.Rmd, standard summary by survey locations, one page per location
 
 /R Scripts
-1. Stomachs.R
-2. BTdata.R
-3. FishLengths.R
-4. Ice_Temps.R
-5. RVCAT.R
+1. BTdata.R, summarizes water profile data from SeaBird vertical profiler, 1991-present
+2. Density_Length_Tables, creates custom tables of densities by length bins
+3. FishLengths.R, annual length frequency plots
+4. Ice_Temps.R, summarizes NOAA GLERL ice and water temperature data
+5. RVCAT.R, summarizes RVCAT data from 1963-present, lots of plots and tables, basis for annual report
+6. Stomachs.R, summarizes our station's stomach content data, 2012-present
