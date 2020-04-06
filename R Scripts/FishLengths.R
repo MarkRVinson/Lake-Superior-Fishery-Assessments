@@ -408,27 +408,6 @@ ggplot(lwf, aes(x=LENGTH))+
 
 ggsave(here('Plots and Tables/Lengths','ns_Lengths_LWF_Vhistogram.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
-##kiyi----------------------------------------------------------------------------------------------------------------
-kiyi <- data3 %>%
-  filter(SPECIES=="206",TARGET==117|TARGET==118, YEAR >=1989)
-ggplot(kiyi, aes(x=LENGTH))+
-  geom_histogram(binwidth = 10)+
-  plot_theme+
-  facet_grid(.~YEAR, switch='both', scales='free')+
-  coord_flip()+
-  geom_hline(yintercept=0, color='black', size=.5)+
-  theme(strip.placement = 'inside',
-        strip.background = element_blank(),
-        strip.text=element_text(size=12))+
-  labs(y='Year', x='Total Length (mm)',
-       title='Lake Superior Kiyi Length Frequency',
-       subtitle='Nearshore spring bottom trawl collections, 1989-2019', 
-       caption = 'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0')+
-  scale_y_continuous(breaks=NULL)+
-  geom_vline(xintercept=130, size=1)
-
-ggsave(here('Plots and Tables/Lengths','ns_Lengths_Kiyi_Vhistogram.png'), dpi = 300, width = 40, height = 20, units = "cm")
-
 ##rainbow smelt------------------------------------------------------------------------------------------------------
 rbs <- data3 %>%
   filter(SPECIES=="109",TARGET==2, YEAR >=1989)
@@ -450,6 +429,50 @@ ggplot(rbs, aes(x=LENGTH))+
   scale_x_continuous(breaks=seq(0,300, by=50), limits=c(0,NA), expand=c(0,0))
 
 ggsave(here('Plots and Tables/Lengths','ns_Lengths_RBS_Vhistogram.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+
+##kiyi----------------------------------------------------------------------------------------------------------------
+kiyi <- data3 %>%
+  filter(SPECIES=="206",TARGET==117|TARGET==118, YEAR >=2011)
+ggplot(kiyi, aes(x=LENGTH))+
+  geom_histogram(binwidth = 10)+
+  plot_theme+
+  facet_grid(.~YEAR, switch='both', scales='free')+
+  coord_flip()+
+  geom_hline(yintercept=0, color='black', size=.5)+
+  theme(strip.placement = 'inside',
+        strip.background = element_blank(),
+        strip.text=element_text(size=12))+
+  labs(y='Year', x='Total Length (mm)',
+       title='Lake Superior Kiyi Length Frequency',
+       subtitle='Offshore summer bottom trawl collections, 2011-2019', 
+       caption = 'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0')+
+  scale_y_continuous(breaks=NULL)+
+  geom_vline(xintercept=130, size=1)
+
+ggsave(here('Plots and Tables/Lengths','ns_Lengths_Kiyi_Vhistogram.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+##SISCOWET--------------------------------------------------------------------------------------------------------------------
+siscowet <- data3 %>%
+  filter(SPECIES=="308",TARGET==117|TARGET==118, YEAR >=2011) %>%
+  subset(LENGTH<=800)
+ggplot(siscowet, aes(x=LENGTH))+
+  geom_histogram(binwidth = 10)+
+  plot_theme+
+  facet_grid(.~YEAR, switch='both', scales='free')+
+  coord_flip()+
+  geom_hline(yintercept=0, color='black', size=.5)+
+  theme(strip.placement = 'inside',
+        strip.background = element_blank(),
+        strip.text=element_text(size=12))+
+  labs(y='Year', x='Total Length (mm)',
+       title='Lake Superior Siscowet Length Frequency',
+       subtitle='Offshore summer bottom trawl collections, 2011-2019', 
+       caption = 'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0')+
+  scale_y_continuous(breaks=NULL)+
+  ##  geom_vline(xintercept=130, size=1)
+  
+  ggsave(here('Plots and Tables/Lengths','ns_Lengths_Siscowet_Vhistogram.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
 
 
@@ -505,7 +528,7 @@ ggsave(here('Plots and Tables/Lengths','ns_lengthfreq.png'),dpi = 300, width = 4
 ##Annual length plots with all fish - jittered
 sumdata2 <- data3 %>%
   filter(SPECIES=="308" & TARGET==118 & YEAR >=2011 |
-           SPECIES=="308" & TARGET==117 & YEAR >=1989)
+           SPECIES=="308" & TARGET==117 & YEAR >=2011)
 
 sumdata3 <-sumdata2 %>%
   group_by(YEAR) %>%
@@ -527,5 +550,3 @@ ggplot(sumdata2, aes(x=YEAR,y = LENGTH)) +
        y = "Total length (mm)")
 
 ggsave(here('Plots and Tables/Lengths','ns_annual_lengths.png'), dpi = 300, width = 40, height = 20, units = "cm")
-
-
