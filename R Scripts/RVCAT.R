@@ -21,6 +21,7 @@ library(magick)
 library(grid)
 library(ggforce)
 library(here)
+library(scales)
 
 ##load the raw RVCAT data file
 ##NOTE: this code is designed to process the ENTIRE RVCAT output, you can subset out target codes, species, years, etc later
@@ -621,11 +622,17 @@ ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_spoonsculp_nomeans.png')
 
 ##SLIMY AND SPOONHEAD SCULPIN TOGETHER
 ns.ann.station.sum.slimyspoon<-filter(ns.ann.station.sum.spp.all, Species==903 | Species==902)
-ns.ann.station.sum.slimyspoon<-select(ns.ann.station.sum.slimyspoon, c(1:3))
+#ns.ann.station.sum.slimyspoon<-select(ns.ann.station.sum.slimyspoon, c(1:3))
 ns.ann.station.sum.slimyspoon<-aggregate(ns.ann.station.sum.slimyspoon$KGHA, by=list(YEAR=ns.ann.station.sum.slimyspoon$YEAR,
-                                                                                     Station=ns.ann.station.sum.slimyspoon$Station),
+                                                                                     Station=ns.ann.station.sum.slimyspoon$Station,
+                                                                                     Species=ns.ann.station.sum.slimyspoon$Species),
                                          FUN=sum) %>%renameCol('x','KGHA')
-ns.summary.slimyspoon <- ns.ann.station.sum.slimyspoon%>% 
+ns.slimyspoon.annmean<-aggregate(ns.ann.station.sum.slimyspoon$KGHA, by=list(YEAR=ns.ann.station.sum.slimyspoon$YEAR,
+                                                                             Species=ns.ann.station.sum.slimyspoon$Species),
+                                 FUN=mean)%>%
+  renameCol('x','KGHA')
+ns.ann.station.sum.slimyspoon2<-select(ns.ann.station.sum.slimyspoon, c(1,2,4))
+ns.summary.slimyspoon <- ns.ann.station.sum.slimyspoon2%>% 
   group_by(YEAR) %>% 
   summarise_all(funs(mean,median,sd,std.error))%>%
   select(c(1,3,5,7,9))
@@ -636,9 +643,14 @@ ns.yr20meanslimyspoon<-subset(ns.summary.slimyspoon, YEAR>=(max(YEAR)-19))
 ns.yr30meanslimyspoon<-subset(ns.summary.slimyspoon, YEAR>=(max(YEAR)-29))
 ns.yr40meanslimyspoon<-subset(ns.summary.slimyspoon, YEAR>=(max(YEAR)-39))
 
-ggplot(ns.summary.slimyspoon, aes(x=YEAR, y=KGHA_mean))+
+ns.slimyspoon.annmean2<-aggregate(ns.slimyspoon.annmean$KGHA, by=list(YEAR=ns.slimyspoon.annmean$YEAR),
+                                  FUN=sum)%>%renameCol('x','KGHA')
+ggplot(ns.slimyspoon.annmean2, aes(x=YEAR, y=KGHA))+
   geom_bar(stat='identity', fill='grey75', color='black')+
   plot_theme+
+  #scale_fill_manual(values=c('grey75','grey25'),labels=c('Slimy Sculpin','Spoonhead Sculpin'),
+  #                  name='')+
+  #theme(legend.position = c(0.8,0.8))+
   labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
        title='Lake Superior Nearshore Slimy and Spoonhead Sculpin Biomass',
        subtitle='USGS bottom trawl assessment')+
@@ -659,9 +671,12 @@ ggplot(ns.summary.slimyspoon, aes(x=YEAR, y=KGHA_mean))+
 ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_slimyspoonsculp.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
 
-ggplot(ns.summary.slimyspoon, aes(x=YEAR, y=KGHA_mean))+
-  geom_bar(stat='identity', fill='grey75', color='black')+
+ggplot(ns.slimyspoon.annmean, aes(x=YEAR, y=KGHA, fill=Species))+
+  geom_bar(stat='identity', position='stack',color='black')+
   plot_theme+
+  scale_fill_manual(values=c('grey75','grey25'),labels=c('Slimy Sculpin','Spoonhead Sculpin'),
+                    name='')+
+  theme(legend.position = c(0.8,0.8))+
   labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
        title='Lake Superior Nearshore Slimy and Spoonhead Sculpin Biomass',
        subtitle='USGS bottom trawl assessment')+
@@ -669,6 +684,32 @@ ggplot(ns.summary.slimyspoon, aes(x=YEAR, y=KGHA_mean))+
                      labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
   scale_y_continuous(expand=c(0,0),limits=c(0,NA))
 ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_slimyspoonsculp_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+##Slimy, Spoonhead, and Deepwater Sculpin (ns only)
+ns.ann.station.sum.slimyspoondeep<-filter(ns.ann.station.sum.spp.all, Species==903 | Species==902|Species==904)
+#ns.ann.station.sum.slimyspoon<-select(ns.ann.station.sum.slimyspoon, c(1:3))
+ns.ann.station.sum.slimyspoondeep<-aggregate(ns.ann.station.sum.slimyspoondeep$KGHA, by=list(YEAR=ns.ann.station.sum.slimyspoondeep$YEAR,
+                                                                                     Station=ns.ann.station.sum.slimyspoondeep$Station,
+                                                                                     Species=ns.ann.station.sum.slimyspoondeep$Species),
+                                         FUN=sum) %>%renameCol('x','KGHA')
+ns.slimyspoondeep.annmean<-aggregate(ns.ann.station.sum.slimyspoondeep$KGHA, by=list(YEAR=ns.ann.station.sum.slimyspoondeep$YEAR,
+                                                                             Species=ns.ann.station.sum.slimyspoondeep$Species),
+                                 FUN=mean)%>%
+  renameCol('x','KGHA')
+
+ggplot(ns.slimyspoondeep.annmean, aes(x=YEAR, y=KGHA, fill=Species))+
+  geom_bar(stat='identity', position='stack',color='black')+
+  plot_theme+
+  scale_fill_manual(values=c('grey75','white','grey25'),labels=c('Slimy Sculpin','Spoonhead Sculpin','Deepwater Sculpin'),
+                    name='')+
+  theme(legend.position = c(0.8,0.8))+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Sculpin Species Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_slimyspoonsculpdeepwater_nomeans.png'), dpi=300, width=40, height=20, units='cm')
 
 
 ##TROUT-PERCH
@@ -828,6 +869,40 @@ ggplot(ns.summary.lns, aes(x=YEAR, y=KGHA_mean))+
   scale_y_continuous(expand=c(0,0),limits=c(0,NA))
 ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_longnose_nomeans.png'), dpi=300, width=40, height=20, units='cm')
 
+
+##miscellaneous nearshore species facet
+ns.station.sum.misc.spp<-filter(ns.ann.station.sum.spp.all, Species==127|Species==130|Species==131|
+                                  Species==404|Species==212|Species==106|Species==129|Species==805)
+
+ns.station.sum.misc.spp<-aggregate(ns.station.sum.misc.spp$KGHA, by=list(YEAR=ns.station.sum.misc.spp$YEAR,
+                                                                                             Station=ns.station.sum.misc.spp$Station,
+                                                                                             Species=ns.station.sum.misc.spp$Species),
+                                             FUN=sum) %>%renameCol('x','KGHA')
+
+ns.summary.misc.spp<-select(ns.station.sum.misc.spp, c(1,3,4))
+ns.summary.misc.spp<- ns.summary.misc.spp%>% 
+  group_by(YEAR,Species) %>% 
+  summarise_each(funs(mean,sd,std.error))
+
+ns.summary.misc.spp<-renameCol(ns.summary.misc.spp,'Species','SPECIES')
+ns.misc.spp.annmean<-merge.data.frame(ns.summary.misc.spp,sci.names)
+ns.misc.spp.annmean<-ns.misc.spp.annmean%>%
+  filter(YEAR>(max(YEAR-20)))
+ns.misc.spp.annmean$COMMON_NAME<-gsub('Ruffe','Eurasian Ruffe', ns.misc.spp.annmean$COMMON_NAME)
+
+ggplot(ns.misc.spp.annmean, aes(x=YEAR, y=mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  facet_wrap(vars(COMMON_NAME), ncol=2,scales='free')+
+  plot_theme+
+  theme(axis.text.y=element_text(size=12),
+        strip.background = element_blank())+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Species Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=pretty_breaks(n=10))+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=pretty_breaks(n=4))+
+  geom_errorbar(aes(ymin=mean-std.error, ymax=mean+std.error), size=0.5, width=0.5)
+ggsave(here('Plots and Tables/RVCAT','ns_misc_spp_biomass.png'), height=30, width=40, units='cm')
 
 ##biomass at individual stations for the current sampling year, ranked by biomass--------------------------------BIOMASS BY STATION-----
 ##summarize nearshore data
@@ -1047,6 +1122,24 @@ ggplot(os.summary, aes(x=YEAR, y=StationKGHA_mean))+
 
 ggsave(here('Plots and Tables/RVCAT','os_biomass_annual.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
+##mean offshore abundance with mean line
+ggplot(os.summary, aes(x=YEAR, y=StationKGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',
+       caption=ann_data_access,
+       title='Lake Superior Offshore Fish Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
+                     labels=c('2011','2013','2015','2017','2019','2021','2023'))+
+  geom_errorbar(data=os.summary, aes(x=YEAR, ymin=StationKGHA_mean-StationKGHA_std.error, ymax=StationKGHA_mean+StationKGHA_std.error),
+                width=0.4)+
+  geom_hline(yintercept=mean(os.summary$StationKGHA_mean), color='black',size=1)+
+  scale_y_continuous(expand=c(0,0), breaks=c(2,4,6,8,10), labels=c('2','4','6','8','10'))
+
+ggsave(here('Plots and Tables/RVCAT','os_biomass_annual_meanline.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+
 ##biomass by station-------------------------------------------------------------------------------------------------------------
 os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
   filter(TR_DESIGN==25|TR_DESIGN==4)%>%
@@ -1188,7 +1281,7 @@ osbiomap2<-ggplot(os.ann.station.sum2, aes(Mid.Long.DD, Mid.Lat.DD)) +
   scale_color_gradient(low='cadetblue2', high='red', name='Biomass\n(kg per ha)')+
   map_theme+
   geom_text(aes(label=Station))+
-  labs(title='Lake Superior offshore Station Fish Biomass',
+  labs(title='Lake Superior Offshore Station Fish Biomass',
        caption=ann_data_access,
        subtitle=(paste('USGS bottom trawl assessment, ', os.ann.station.sum2$YEAR)))
 
@@ -1358,10 +1451,89 @@ ggplot(os.biomass.kiyi, aes(x=YEAR, y=mean))+
                      limits=c(2010, 2020))+
   geom_errorbar(data=os.biomass.kiyi, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
                 width=0.4)+
-  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,5, by=0.5))
 ggsave(here('Plots and Tables/RVCAT','os_annual_biomass_kiyi_nomeans.png'), dpi=300, width=40, height=20, units='cm')
 
+ggplot(os.biomass.kiyi, aes(x=YEAR, y=mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Offshore Kiyi Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
+                     labels=c('2011','2013','2015','2017','2019','2021','2023'),
+                     limits=c(2010, 2020))+
+  geom_errorbar(data=os.biomass.kiyi, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,5, by=0.5))+
+  geom_hline(yintercept=mean(os.biomass.kiyi$mean), color='black',size=1)
+ggsave(here('Plots and Tables/RVCAT','os_annual_biomass_kiyi_means.png'), dpi=300, width=40, height=20, units='cm')
 
+
+##deepwater sculpin
+os.biomass.dws<-filter(os.spp.compare.mean,SPECIES==904)
+
+ggplot(os.biomass.dws, aes(x=YEAR, y=mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Offshore Deepwater Sculpin Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
+                     labels=c('2011','2013','2015','2017','2019','2021','2023'),
+                     limits=c(2010, 2020))+
+  geom_errorbar(data=os.biomass.dws, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,5, by=0.5))
+ggsave(here('Plots and Tables/RVCAT','os_annual_biomass_dws_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+ggplot(os.biomass.dws, aes(x=YEAR, y=mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Offshore Deepwater Sculpin Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
+                     labels=c('2011','2013','2015','2017','2019','2021','2023'),
+                     limits=c(2010, 2020))+
+  geom_errorbar(data=os.biomass.dws, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,5, by=0.5))+
+  geom_hline(yintercept=mean(os.biomass.dws$mean),color='black',size=1)
+ggsave(here('Plots and Tables/RVCAT','os_annual_biomass_dws_means.png'), dpi=300, width=40, height=20, units='cm')
+
+
+##siscowet Lake Trout
+os.biomass.slt<-filter(os.spp.compare.mean,SPECIES==308)
+
+ggplot(os.biomass.slt, aes(x=YEAR, y=mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Offshore Deepwater Sculpin Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
+                     labels=c('2011','2013','2015','2017','2019','2021','2023'),
+                     limits=c(2010, 2020))+
+  geom_errorbar(data=os.biomass.slt, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,7, by=0.5))
+ggsave(here('Plots and Tables/RVCAT','os_annual_biomass_siscowet_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+ggplot(os.biomass.slt, aes(x=YEAR, y=mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Offshore Deepwater Sculpin Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
+                     labels=c('2011','2013','2015','2017','2019','2021','2023'),
+                     limits=c(2010, 2020))+
+  geom_errorbar(data=os.biomass.slt, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,7, by=0.5))+
+  geom_hline(yintercept=mean(os.biomass.slt$mean), color='black',size=1)
+ggsave(here('Plots and Tables/RVCAT','os_annual_biomass_siscowet_means.png'), dpi=300, width=40, height=20, units='cm')
 
 ##Chequamegon Bay######################################################################################################Cheq Bay#####
 cheq<-subset(all.data, TARGET==106)

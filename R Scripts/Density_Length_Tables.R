@@ -13,22 +13,22 @@ library(here)
 ################################################################################################
 ##Fill in the information you want here, then run the following code
 
-species<-202 ##enter species code of interest
+species<-203 ##enter species code of interest
 ##Commonly used species codes:
 ##Alewife = 106, Blackfin Cisco = 207, Bloater = 204, Burbot = 127, Cisco = 202, 
 ##Deepwater Sculpin = 904, hatchery Lake Trout = 307, Kiyi = 206, Lake Whitefish = 203, 
 ##lean Lake Trout = 317, Longnose Sucker = 404, Ninespine Stickleback = 130, 
 ##Pygmy Whitefish = 211, Rainbow Smelt =109, Round Whitefish = 212, Ruffe = 805, 
 ##Shortjaw Cisco = 210, siscowet Lake Trout = 308, Slimy Sculpin = 902, Spoonhead Sculpin = 903, 
-##Spottail Shiner = 508, Threespine Stickleback = 129, Trout-perch = 131, Yellow Perch = 801
+##Spottail Shiner = 508, Threespine Stickleback, 129, Trout-perch = 131, Yellow Perch = 801
 
 survey<-c(2) ##enter target codes
 ##Common target codes: 2 = nearshore, 117 = CSMI, 118 = offshore, 
 ##for present-day Offshore Survey use both 117, 118 and minimum year = 2011 and
 ##minimum depth to >84, 106 = Chequamegon Bay
 
-sizebreaks<-c(0,140,200,300,400,500,2000) ##enter the size cutoffs you want to calculate for
-sizelabels<-c('<140 mm','140-200 mm','200-300 mm','300-400 mm','400-500 mm','>500 mm') ##labels
+sizebreaks<-c(0,160,200,300,400,500,2000) ##enter the size cutoffs you want to calculate for
+sizelabels<-c('<160 mm','100-200 mm','200-300 mm','300-400 mm','400-500 mm','>500 mm') ##labels
 ##need to start with 0, smallest category will be less than the second number entered
 ##need to end with a number larger than any of the fish you may be analyzing
 ##there should be one less label category than there are breaks
