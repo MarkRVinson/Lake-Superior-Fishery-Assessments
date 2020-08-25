@@ -3,15 +3,12 @@ library(tidyverse)
 library(doBy)
 library(readxl)
 library(ggplot2)
-library(dplyr)
 library(purrr)
 library(viridis)
 library(reshape)
 library(xlsx)
 library(lubridate)
-library(plyr)
 library(gganimate)
-##library(emojifont)
 library(ggimage)
 library(here)
 library(grid)
@@ -222,7 +219,7 @@ ggsave(here('Plots and Tables/Ice_Temp','LS_20PercIceDays_Recruitment.png'), dpi
 
 ##Today's date as JDay or you could change this to any day of the ice season you care about
 x <-Sys.Date()
-jdaytoday = yday(x)
+jdaytoday = day(x)
 
 ###manually subset data for any JDay
 jdaytoday = 40
@@ -316,7 +313,7 @@ temp<-read.xlsx(here('Data','LS_GLERL_WTemp.xlsx'), sheetIndex = 'GLERL')
   pivot_longer(3:8, names_to = "lake", values_to = "temperature") 
  
  temp1 <- temp %>%
-  filter(lake == 'Superior') 
+  filter(lake == 'Superior')  
  
 ggplot(temp1, aes(x=jday, y=temperature, color=temperature))+
   geom_line(size=2)+
@@ -352,8 +349,6 @@ temp.postnino<-aggregate(temp.postnino$temperature, by=list(jday=temp.postnino$j
 temp2<-merge.data.frame(temp1, temp.prenino)
 temp3<-merge.data.frame(temp2, temp.postnino)
 
-grob <- grobTree(textGrob("Temperature C", x=0.15,  y=-0.08, 
-                          gp=gpar(col="black", fontsize=18, family="serif")))
 
 p<-ggplot(temp3, aes(x=jday, y=temperature, color=temperature))+
   geom_line(size=2)+
@@ -371,7 +366,6 @@ p<-ggplot(temp3, aes(x=jday, y=temperature, color=temperature))+
   theme(legend.position=c(0.15,-0.08), 
         legend.direction="horizontal", 
         legend.title = element_blank()) +
-#  annotation_custom(grob) +
   geom_line(aes(x=jday, y=mean.prenino), color='seagreen', size=1)+
   geom_line(aes(x=jday, y=mean.postnino), color='orange1', size=1)
 

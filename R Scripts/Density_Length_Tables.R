@@ -13,7 +13,8 @@ library(here)
 ################################################################################################
 ##Fill in the information you want here, then run the following code
 
-species<-203 ##enter species code of interest
+species<-308 ##enter species code of interest
+
 ##Commonly used species codes:
 ##Alewife = 106, Blackfin Cisco = 207, Bloater = 204, Burbot = 127, Cisco = 202, 
 ##Deepwater Sculpin = 904, hatchery Lake Trout = 307, Kiyi = 206, Lake Whitefish = 203, 
@@ -22,26 +23,36 @@ species<-203 ##enter species code of interest
 ##Shortjaw Cisco = 210, siscowet Lake Trout = 308, Slimy Sculpin = 902, Spoonhead Sculpin = 903, 
 ##Spottail Shiner = 508, Threespine Stickleback, 129, Trout-perch = 131, Yellow Perch = 801
 
-survey<-c(2) ##enter target codes
+##survey<-c(2) ##enter target codes
+
+survey<-c(117, 118) ##enter target codes
+
 ##Common target codes: 2 = nearshore, 117 = CSMI, 118 = offshore, 
 ##for present-day Offshore Survey use both 117, 118 and minimum year = 2011 and
 ##minimum depth to >84, 106 = Chequamegon Bay
 
-sizebreaks<-c(0,160,200,300,400,500,2000) ##enter the size cutoffs you want to calculate for
-sizelabels<-c('<160 mm','100-200 mm','200-300 mm','300-400 mm','400-500 mm','>500 mm') ##labels
+sizebreaks<-c(0,200,300,400,500,600,2000) ##enter the size cutoffs you want to calculate for
+sizelabels<-c('<200 mm','200-300 mm','300-400 mm','400-500 mm','500-600 mm','>600 mm') ##labels
 ##need to start with 0, smallest category will be less than the second number entered
 ##need to end with a number larger than any of the fish you may be analyzing
 ##there should be one less label category than there are breaks
 ##Potentially useful break points: age1 sizes - Cisco <140 mm, Bloater <130 mm, 
 ##Lake Whitefish <160mm, Rainbow Smelt <100 mm. Young Lake Trout , < 226 mm ~<age-3
 
-depthgreater<-0 ##if you have a "greater than" depth cutoff, if not, put 0
+##depthgreater<-0 ##if you have a "greater than" depth cutoff, if not, put 0
+
+##For offshore cruise
+depthgreater<-84 ##if you have a "greater than" depth cutoff, if not, put 0
 
 depthless<-400 ##if you have a "less than" depth cutoff, if not, put 400
 
 yearmax<-2100 ##max year you want included, if no max, use 2100
 
-yearmin<-1900 ##min year you want included, if no min, use 1900
+##yearmin<-1900 ##min year you want included, if no min, use 1900
+
+##For offshore cruise
+yearmin<-2011 ##min year you want included, if no min, use 1900
+
 
 gear<-c(4,25) ##define gears (TR_DESIGN)
 ##4 = 39' bottom trawl, 25 = 39' roller trawl. Use both codes for Nearshore and Offshore Surveys. 

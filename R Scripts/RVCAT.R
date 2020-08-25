@@ -7,7 +7,6 @@ library(ggplot2)
 library(plotrix)
 library(psych)
 library(rlang)
-library(dplyr)
 library(purrr)
 library(forcats)
 library(viridis)
@@ -15,13 +14,13 @@ library(reshape)
 library(rgdal)
 library(xlsx)
 library(lubridate)
-library(plyr)
 library(gganimate)
 library(magick)
 library(grid)
 library(ggforce)
 library(here)
 library(scales)
+
 
 ##load the raw RVCAT data file
 ##NOTE: this code is designed to process the ENTIRE RVCAT output, you can subset out target codes, species, years, etc later
@@ -1412,7 +1411,68 @@ os.spp.compare.mean<-os.spp.compare3%>%
 
 ##merge to get species names
 os.spp.compare.mean<-merge.data.frame(os.spp.compare.mean, codes.to.names, all=F)
+os.table<-select(os.spp.compare.mean, c('SPECIES','YEAR','mean'))
+os.table<-cast(os.table, YEAR~SPECIES, value='mean')
+os.table<-os.table%>%
+  renameCol('206','Kiyi')%>%
+  renameCol('308','siscowet Lake Trout')%>%
+  renameCol('904','Deepwater Sculpin')
 
+os.cast<-cast(os, YEAR+LOCATION~SPECIES, value='KGHA')
+os.cast[is.na(os.cast)]<-0
+os.cast<-melt(os.cast, id=c('YEAR','LOCATION'))
+os.total<-aggregate(os.cast$value, by=list(YEAR=os.cast$YEAR, LOCATION=os.cast$LOCATION), FUN=sum)
+os.total<-aggregate(os.total$x, by=list(YEAR=os.total$YEAR), FUN=mean)%>% 
+  renameCol('x','Mean Total Biomass')
+
+os.table<-merge.data.frame(os.table, os.total)
+
+os.summary<-select(os, c(4,8,29,35))
+os.unique.sites<-os.sites.byyear%>% ##to calculate the number of sites sampled during the nearshore cruise each year
+  group_by(YEAR)%>%
+  dplyr::count('LOCATION')%>%
+  select(c(1,3))%>%
+  renameCol('n','Sites')
+os.total.biomass<-aggregate(os.summary$KGHA, by=list(YEAR=os.summary$YEAR, LOCATION=os.summary$LOCATION), FUN=sum)%>% 
+  renameCol('x', 'SiteSum')
+os.zero.sites<-subset(os.total.biomass, SiteSum==0) ##to calculate the number of sites where no fish were caught
+os.zero.sites<-os.zero.sites%>%
+  group_by(YEAR)%>%
+  dplyr::count()%>%
+  renameCol('n','No fish sites')
+os.years<-data.frame(YEAR=c(2011:max(os$YEAR)))
+os.zero.sites<-merge.data.frame(os.zero.sites, os.years, all=T)
+os.zero.sites[is.na(os.zero.sites)]<-0
+os.total.biomass2<-aggregate(os.total.biomass$SiteSum, by=list(YEAR=os.total.biomass$YEAR), FUN=mean)%>% ##mean total biomass
+  renameCol('x','Total biomass')
+os.median.biomass<-aggregate(os.total.biomass$SiteSum, by=list(YEAR=os.total.biomass$YEAR), FUN=median)%>% ##median total biomass
+  renameCol('x','Median biomass')
+os.spp.count<-merge.data.frame(os.summary, sci.names) ##to calculate the mean biomass of various common species
+os.spp.count<-select(os.spp.count, c(2:5))%>%
+  renameCol('COMMON_NAME','SPECIES')
+os.spp.count<-merge.data.frame(os.spp.count, os.sites.byyear, by=c('YEAR','LOCATION'), all=T)
+os.spp.count<-cast(os.spp.count, YEAR+LOCATION+SITECHECK~SPECIES, value='KGHA', fun.aggregate='mean')
+os.spp.count[is.na(os.spp.count)]<-0
+os.spp.count<-select(os.spp.count, c(1, 4:20))
+os.spp.count2<-aggregate(.~YEAR, os.spp.count, FUN=mean)
+
+os.num<-select(os, c(4,8,29,30))
+os.tot.spp.caught<-subset(os.num, NUM>0) ##calculate the total number of species caught each year
+os.tot.spp.caught$spp2<-as.numeric(as.character(os.tot.spp.caught$SPECIES))
+os.tot.spp.caught<-subset(os.tot.spp.caught, spp2<999)
+os.tot.spp.caught<-select(os.tot.spp.caught, c(1,3))
+os.tot.spp.caught<-unique(os.tot.spp.caught)
+os.tot.spp.caught<-aggregate(os.tot.spp.caught$SPECIES, by=list(YEAR=os.tot.spp.caught$YEAR), FUN=length)%>%
+  renameCol('x','Total species collected')
+
+os.stats<-merge.data.frame(os.unique.sites, os.zero.sites)
+os.stats<-merge.data.frame(os.stats,os.tot.spp.caught )
+os.stats<-merge.data.frame(os.stats, os.total.biomass2)
+os.stats<-merge.data.frame(os.stats, os.median.biomass)
+
+os.table<-merge.data.frame(os.table, os.stats)
+os.table<-select(os.table,c('YEAR','Sites','No fish sites','Total species collected','Total biomass',
+                            'Median biomass','Kiyi','Deepwater Sculpin','siscowet Lake Trout'))
 ##spp means
 os.means<-os.spp.compare.mean%>%
   group_by(COMMON_NAME)%>%
@@ -2474,10 +2534,93 @@ p<-ggplot(ns.bcr3, aes(rank, frame=Year))+
 animate(p, fps = 4, nframes=200, width = 1024, height = 512, renderer=gifski_renderer(loop=T), end_pause=20) ##nframes =n years x2-1
 anim_save(here("Plots and Tables/RVCAT",'Animated_ns_bar_race.gif'))
 
+###########################################################################################
+##DATA EXPORT ALL SPECIES, YEARS, SITES
+###########################################################################################
+os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
+  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
+  filter(END_DEPTH>84)
+
+ns<-subset(all.data, TARGET==2 & YEAR>1977)
+
+
+ns.all<-select(ns, c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.Lat.DD,Mid.Long.DD,TR_DESIGN,
+                     BEG_DEPTH,END_DEPTH,SPECIES,HA_SWEPT,NUM,NOHA,KGHA))
+ns.all.num<-cast(ns.all, OP_ID+OP_DATE+TIME+YEAR+TARGET+LOCATION+Mid.Lat.DD+Mid.Long.DD+TR_DESIGN+
+               BEG_DEPTH+END_DEPTH+HA_SWEPT~SPECIES, value='NUM')
+ns.all.num[is.na(ns.all.num)]<-0
+ns.all.noha<-cast(ns.all, OP_ID+OP_DATE+TIME+YEAR+TARGET+LOCATION+Mid.Lat.DD+Mid.Long.DD+TR_DESIGN+
+                    BEG_DEPTH+END_DEPTH+HA_SWEPT~SPECIES, value='NOHA')
+ns.all.noha[is.na(ns.all.noha)]<-0
+ns.all.kgha<-cast(ns.all, OP_ID+OP_DATE+TIME+YEAR+TARGET+LOCATION+Mid.Lat.DD+Mid.Long.DD+TR_DESIGN+
+                    BEG_DEPTH+END_DEPTH+HA_SWEPT~SPECIES, value='KGHA')
+ns.all.kgha[is.na(ns.all.kgha)]<-0
+
+ns.all.num2<-melt(ns.all.num, id=c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+                                   TR_DESIGN,BEG_DEPTH,END_DEPTH,HA_SWEPT))
+ns.all.num2<-renameCol(ns.all.num2, 'value','NUM')
+ns.all.noha2<-melt(ns.all.noha, id=c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+                                    TR_DESIGN,BEG_DEPTH,END_DEPTH,HA_SWEPT))
+ns.all.noha2<-renameCol(ns.all.noha2, 'value','NOHA')
+ns.all.kgha2<-melt(ns.all.kgha, id=c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+                                     TR_DESIGN,BEG_DEPTH,END_DEPTH,HA_SWEPT))
+ns.all.kgha2<-renameCol(ns.all.kgha2, 'value','KGHA')
+
+ns.all.complete<-merge.data.frame(ns.all.num2, ns.all.noha2)
+ns.all.complete<-merge.data.frame(ns.all.complete, ns.all.kgha2)
+ns.all.complete<-filter(ns.all.complete, SPECIES !=0)
+ns.all.complete<-filter(ns.all.complete, SPECIES !=999)
+ns.all.complete<-merge.data.frame(ns.all.complete, sci.names)
+
+os.all<-select(os, c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.Lat.DD,Mid.Long.DD,TR_DESIGN,
+                     BEG_DEPTH,END_DEPTH,SPECIES,HA_SWEPT,NUM,NOHA,KGHA))
+os.all.num<-cast(os.all, OP_ID+OP_DATE+TIME+YEAR+TARGET+LOCATION+Mid.Lat.DD+Mid.Long.DD+TR_DESIGN+
+                   BEG_DEPTH+END_DEPTH+HA_SWEPT~SPECIES, value='NUM')
+os.all.num[is.na(os.all.num)]<-0
+os.all.noha<-cast(os.all, OP_ID+OP_DATE+TIME+YEAR+TARGET+LOCATION+Mid.Lat.DD+Mid.Long.DD+TR_DESIGN+
+                    BEG_DEPTH+END_DEPTH+HA_SWEPT~SPECIES, value='NOHA')
+os.all.noha[is.na(os.all.noha)]<-0
+os.all.kgha<-cast(os.all, OP_ID+OP_DATE+TIME+YEAR+TARGET+LOCATION+Mid.Lat.DD+Mid.Long.DD+TR_DESIGN+
+                    BEG_DEPTH+END_DEPTH+HA_SWEPT~SPECIES, value='KGHA')
+os.all.kgha[is.na(os.all.kgha)]<-0
+
+os.all.num2<-melt(os.all.num, id=c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+                                   TR_DESIGN,BEG_DEPTH,END_DEPTH,HA_SWEPT))
+os.all.num2<-renameCol(os.all.num2, 'value','NUM')
+os.all.noha2<-melt(os.all.noha, id=c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+                                     TR_DESIGN,BEG_DEPTH,END_DEPTH,HA_SWEPT))
+os.all.noha2<-renameCol(os.all.noha2, 'value','NOHA')
+os.all.kgha2<-melt(os.all.kgha, id=c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+                                     TR_DESIGN,BEG_DEPTH,END_DEPTH,HA_SWEPT))
+os.all.kgha2<-renameCol(os.all.kgha2, 'value','KGHA')
+
+os.all.complete<-merge.data.frame(os.all.num2, os.all.noha2)
+os.all.complete<-merge.data.frame(os.all.complete, os.all.kgha2)
+os.all.complete<-filter(os.all.complete, SPECIES !=0)
+os.all.complete<-filter(os.all.complete, SPECIES !=999)
+os.all.complete<-merge.data.frame(os.all.complete, sci.names)
+
+ns.all.present<-filter(ns.all.complete, NUM>0)
+os.all.present<-filter(os.all.complete, NUM>0)
+
+library(openxlsx)
+metadata<-read.xlsx(here('Data','ns_os_all_MetaData.xlsx'))
+list.sheets<-list('Nearshore_Zeros'=ns.all.complete, 'Offshore_Zeros'=os.all.complete,
+                  'Nearshore_NoZeros'=ns.all.present, 'Offshore_NoZeros'=os.all.present,
+                  'Effort_CurrentYear'=effort.all, 'Age-1_Fish'=age1.table, "NS_table"=ns.table,
+                  'OS_Table'=os.table,'MetaData'=metadata)
+
+openxlsx::write.xlsx(list.sheets, here('Plots and Tables/RVCAT','ns_os_all.xlsx'))
+####################################################################################
+####################################################################################
+
+
 
 ####################################################################################
 ##Sankey Diagram Nearshore Offshore Fish Collections#########################################
 ## USING network3D Package
+####################################################################################
+
 library(networkD3)
 library(htmltools)
 
@@ -2488,7 +2631,7 @@ current.yr.all<-all.data%>%
 current.yr.all$TARGET_f<-as.factor(current.yr.all$TARGET)
 
 ##load the species names file for when needed
-codes.to.names<-read_xlsx('Species_Taxonomy.xlsx')
+codes.to.names<-read_xlsx(here('Data','Species_Taxonomy.xlsx'))
 sci.names<-select(codes.to.names, c(2:4))
 
 spp.counts<-aggregate(current.yr.all$NUM, by=list(SPECIES=current.yr.all$SPECIES, TARGET=current.yr.all$TARGET), FUN=sum)%>%
@@ -2636,218 +2779,3 @@ networkD3::sankeyNetwork(Links = links, Nodes = nodes,
                          height = 800, width = 1000)
 
 
-
-######################################################################################
-######################################################################################
-######################################################################################
-######################################################################################
-##Make data table with NUM, WT, NOHA, KGHA for Targets = 2,117, 118
-survey.yr.fish<-all.data %>%
-  filter(TARGET==2 & YEAR>1977 |
-           TARGET==118 |
-           TARGET==117 & END_DEPTH>84) %>%
-  filter(TR_DESIGN==25|TR_DESIGN==4) %>%
-  select (4,5,8,29:31,34,35)
-
-survey.yr.sites<-all.data %>%
-  group_by(YEAR,TARGET)%>%
-  distinct(LOCATION)
-survey.yr.sites$SITECHECK<-'SURVEYED' 
-
-survey.yr<-merge.data.frame(survey.yr.fish, survey.yr.sites, all=TRUE) %>%
-  filter(TARGET==2 | TARGET==118 | TARGET==117)
-  
-###STOPPED##########  
-###STOPPED##########  
-###STOPPED##########  
-###STOPPED##########  
-###STOPPED##########  
-###STOPPED##########  
-###STOPPED##########  
-###STOPPED##########  
-###STOPPED##########  
-###STOPPED##########  
-  
-  survey.yr.all<-cast(survey.yr, YEAR+LOCATION+SITECHECK~SPECIES, value='KGHA', fun.aggregate='mean')
-
-
-%>%
-    select(c(1,2,4:6))
-  spp.compare.ns2[is.na(spp.compare.ns2)]<-0
-  spp.compare<-melt.data.frame(spp.compare.ns2, id.vars=c('YEAR','LOCATION'))%>%
-    renameCol('value','KGHA')%>%
-    renameCol('variable','SPECIES')
-  
-  
-  
-   complete(YEAR, TARGET, SPECIES) %>%
-  filter(TARGET==2 & LOCATION <500 | 
-           TARGET==117 & LOCATION>500 |
-           TARGET==118 & LOCATION>500)
- survey.yr[is.na(survey.yr)]<-0
-
- 
-#############################
- nearshore.sites.byyear<-nearshore%>%
-   group_by(YEAR)%>%
-   distinct(LOCATION)
- nearshore.sites.byyear$SITECHECK<-'SURVEYED'
- 
- spp.compare.ns2<-merge.data.frame(spp.compare.ns, nearshore.sites.byyear, all=TRUE)
- spp.compare.ns2<-cast(spp.compare.ns2, YEAR+LOCATION+SITECHECK~SPECIES, value='KGHA', fun.aggregate='mean')%>%
-   select(c(1,2,4:6))
- spp.compare.ns2[is.na(spp.compare.ns2)]<-0
- spp.compare<-melt.data.frame(spp.compare.ns2, id.vars=c('YEAR','LOCATION'))%>%
-   renameCol('value','KGHA')%>%
-   renameCol('variable','SPECIES')
- 
- ##now find the mean of each species for each year
- spp.compare.ns.mean<-aggregate(spp.compare$KGHA, by=list(Year=spp.compare$YEAR, SPECIES=spp.compare$SPECIES), FUN=mean)%>%
-   renameCol('x', 'meanKGHA')
- 
- ##merge to get species names
- spp.compare.ns.mean<-merge.data.frame(spp.compare.ns.mean, codes.to.names, all=F)
- 
- 
- 
-############################## 
-survey.yr.sum<-aggregate(survey.yr$KGHA, by=list(survey.yr=survey.yr$YEAR, 
-               survey.yr=survey.yr$TARGET, survey.yr=survey.yr$SPECIES), FUN=mean) %>%
-  renameCol(1,'YEAR') %>%
-  renameCol(2,'SURVEY') %>%
-  renameCol(3,'SPECIES') %>%
-  renameCol(4,'KGHA') 
-
-survey.yr.sum<-subset(survey.yr.sum, SURVEY==2 |
-         SURVEY==117 & YEAR==2011 | SURVEY==117 & YEAR==2016 |
-         SURVEY==118 & YEAR>2011 & YEAR!=2011+5)
-
-pig<-aggregate(survey.yr.sum$KGHA, by=list(survey.yr.sum=survey.yr.sum$YEAR,
-         survey.yr.sum=survey.yr.sum$SURVEY), FUN=sum)
-
-
-
-##Make data table with NUM, WT, NOHA, KGHA; CURRENT YEAR
-current.yr<-all.data %>%
-  filter(YEAR==max(YEAR))%>%
-  filter(TARGET==2|TARGET==117|TARGET==118) %>%
-  select (5,8,29:31,34,35) %>%
-  complete(TARGET, LOCATION, SPECIES) %>%
-  filter(TARGET==2 & LOCATION <500 | TARGET==117 & LOCATION>500 | TARGET==118 & LOCATION>500)
-current.yr[is.na(current.yr)]<-0
-
-cy1<-aggregate(current.yr$NUM, by=list(current.yr=current.yr$SPECIES,current.yr=current.yr$TARGET), FUN=sum)%>%
-  renameCol(1,'SPECIES') %>%
-  renameCol(2,'TARGET') %>%
-  renameCol(3,'NUM') 
-cy2<-aggregate(current.yr$WT, by=list(current.yr=current.yr$SPECIES,current.yr=current.yr$TARGET), FUN=sum)%>%
-  renameCol(1,'SPECIES') %>%
-  renameCol(2,'TARGET') %>%
-  renameCol(3,'WT') 
-cy3<-aggregate(current.yr$NOHA, by=list(current.yr=current.yr$SPECIES,current.yr=current.yr$TARGET), FUN=mean)%>%
-  renameCol(1,'SPECIES') %>%
-  renameCol(2,'TARGET') %>%
-  renameCol(3,'NOHA') 
-cy4<-aggregate(current.yr$KGHA, by=list(current.yr=current.yr$SPECIES,current.yr=current.yr$TARGET), FUN=mean)%>%
-  renameCol(1,'SPECIES') %>%
-  renameCol(2,'TARGET') %>%
-  renameCol(3,'KGHA') 
-
-current.yr.sum<- cbind(cy1[1:3],cy2[3],cy3[3],cy4[3]) 
-current.yr.names<-merge.data.frame(current.yr.sum, sci.names) 
-
-
-filter(NUM>0)
-renameCol('COMMON_NAME','Common name')%>%
-  renameCol('SCI_NAME','Scientific name')%>%
-  renameCol('2','Nearshore')%>%
-  renameCol('118','Offshore')
-spp.counts2[is.na(spp.counts2)]<-0
-
-
-
-
-
-
-
-
-#########################################################################
-###Sankey using ggalluvial package
-
-
-ggplot(catch.yr,
-       aes(weight = Count, axis1 = Fish, axis2 = Survey)) +
-  geom_alluvium(aes(fill = Survey, color = Survey), 
-                width = 1/12, alpha = alpha, knot.pos = 0.4) +
-  geom_stratum(width = 1/6, color = "grey") +
-  geom_label(stat = "stratum", label.strata = TRUE) +
-  scale_x_continuous(breaks = 1:2, labels = c("Category", "Response"))     +
-  scale_fill_manual(values  = c(A_col, B_col, C_col)) +
-  scale_color_manual(values = c(A_col, B_col, C_col)) +
-  ggtitle("Relevance of Facebook Custom List Advertising") +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(size = 12, face = "bold")
-  )
-
-labs(title='Lake Superior Nearshore and Offshore Survey',
-     subtitle='USGS bottom trawl assessment',
-     caption=ann_data_access)
-
-
-ggsave(p,'Plots and Tables/Plots_RVCAT/ns_os_sankey.png', dpi = 300, width = 40, height = 20, units = "cm")
-
-#########################################
-
-setwd("~/R/Scripts/RVCAT")
-
-current.yr.all<-all.data%>%
-  filter(YEAR==max(YEAR))%>%
-  filter(TARGET==2|TARGET==117|TARGET==118)
-current.yr.all$TARGET_f<-as.factor(current.yr.all$TARGET)
-
-##load the species names file for when needed
-codes.to.names<-read_xlsx('Species_Taxonomy.xlsx')
-sci.names<-select(codes.to.names, c(2:4))
-
-
-spp.counts<-aggregate(current.yr.all$NUM, by=list(SPECIES=current.yr.all$SPECIES, TARGET=current.yr.all$TARGET), FUN=sum)%>%
-  renameCol('x','SUM')
-spp.counts<-merge.data.frame(spp.counts, sci.names)
-spp.counts<-select(spp.counts, c(4,5,2,3))
-spp.counts2<-cast(spp.counts, COMMON_NAME+SCI_NAME~TARGET, value="SUM")
-spp.counts2<-spp.counts2%>%
-  renameCol('COMMON_NAME','Fish')%>%
-  renameCol('SCI_NAME','Scientific name')%>%
-  renameCol('2','Nearshore')%>%
-  renameCol('118','Offshore')
-spp.counts2[is.na(spp.counts2)]<-0 
-
-catch.yr <- spp.counts2 %>% 
-  select (1,3,4) 
-
-catch.yr <- tidyr::gather(catch.yr, Survey, Count, -Fish)
-
-# create nodes dataframe
-Fish <- unique(as.character(catch.yr$Fish))
-nodes <- data.frame(node = c(0:25), 
-                    name = c(Fish, "Nearshore", "Offshore"))
-#create links dataframe
-catch.yr <- merge(catch.yr, nodes, by.x = "Fish", by.y = "name")
-catch.yr <- merge(catch.yr, nodes, by.x = "Survey", by.y = "name")
-links <- catch.yr[ , c("node.x", "node.y", "Count")]
-colnames(links) <- c("source", "target", "value")
-
-# draw sankey network
-p<-networkD3::sankeyNetwork(Links = links, Nodes = nodes, 
-                         Source = 'source', 
-                         Target = 'target', 
-                         Value = 'value', 
-                         NodeID = 'name',
-                         units = 'Count')
-labs(title='Lake Superior Nearshore and Offshore Survey',
-     subtitle='USGS bottom trawl assessment',
-     caption=ann_data_access)
-
-
-ggsave(p,'Plots and Tables/Plots_RVCAT/ns_os_sankey.png', dpi = 300, width = 40, height = 20, units = "cm")

@@ -7,7 +7,6 @@ library(ggplot2)
 library(plotrix)
 library(psych)
 library(rlang)
-library(dplyr)
 library(purrr)
 library(forcats)
 library(viridis)
@@ -430,6 +429,27 @@ ggplot(rbs, aes(x=LENGTH))+
 
 ggsave(here('Plots and Tables/Lengths','ns_Lengths_RBS_Vhistogram.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
+##longnose sucker--------------------------------------------------------------------------
+lns <- data3 %>%
+  filter(SPECIES=="404",TARGET==2, YEAR >=1989)
+ggplot(lns, aes(x=LENGTH))+
+  geom_histogram(binwidth = 10)+
+  plot_theme+
+  facet_grid(.~YEAR, switch='both', scales='free')+
+  coord_flip()+
+  geom_hline(yintercept=0, color='black', size=.5)+
+  theme(strip.placement = 'inside',
+        strip.background = element_blank(),
+        strip.text=element_text(size=12))+
+  labs(y='Year', x='Total Length (mm)',
+       title='Lake Superior Longnose Sucker Length Frequency',
+       subtitle='Nearshore spring bottom trawl collections, 1989-2019', 
+       caption = 'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0')+
+  scale_y_continuous(breaks=NULL)+
+ ## geom_vline(xintercept=100, size=1)+
+  scale_x_continuous(breaks=seq(0,500, by=50), limits=c(0,NA), expand=c(0,0))
+
+ggsave(here('Plots and Tables/Lengths','ns_Lengths_LNS_Vhistogram.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
 ##kiyi----------------------------------------------------------------------------------------------------------------
 kiyi <- data3 %>%
@@ -550,3 +570,66 @@ ggplot(sumdata2, aes(x=YEAR,y = LENGTH)) +
        y = "Total length (mm)")
 
 ggsave(here('Plots and Tables/Lengths','ns_annual_lengths.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+
+
+###################################################################################################
+###################################################################################################
+###Excel annual summary table of lengths by species and targets (2-nearshore, 117/118-offshore)
+
+##library
+library(tidyverse)
+library(doBy)
+library(readxl)
+library(xlsx)
+library(lubridate)
+library(here)
+
+
+##load the raw RVCAT data file
+raw.data<-read.csv(here('Data','RVCAT.csv'))
+
+##change date into usable form
+raw.data$date<-dmy(raw.data$OP_DATE)
+
+###Calculate mid lat and long for each trawl
+
+raw.data[is.na(raw.data[,"END_LATITUDE_DD"]), "END_LATITUDE_DD"] <- raw.data[is.na(raw.data[, "END_LATITUDE_DD"]),"BEG_LATITUDE_DD"]
+raw.data[is.na(raw.data[,"BEG_LATITUDE_DD"]), "BEG_LATITUDE_DD"] <- raw.data[is.na(raw.data[, "BEG_LATITUDE_DD"]),"END_LATITUDE_DD"]
+
+raw.data[is.na(raw.data[,"END_LONGITUDE_DD"]), "END_LONGITUDE_DD"] <- raw.data[is.na(raw.data[, "END_LONGITUDE_DD"]),"BEG_LONGITUDE_DD"]
+raw.data[is.na(raw.data[,"BEG_LONGITUDE_DD"]), "BEG_LONGITUDE_DD"] <- raw.data[is.na(raw.data[, "BEG_LONGITUDE_DD"]),"END_LONGITUDE_DD"]
+
+raw.data$Mid.Lat.DD<-(raw.data$BEG_LATITUDE_DD+raw.data$END_LATITUDE_DD)/2
+raw.data$Mid.Long.DD<-(raw.data$BEG_LONGITUDE_DD+raw.data$END_LONGITUDE_DD)/2
+
+raw.data$YearClass<-raw.data$YEAR-1
+
+##Select minimum number of fields of interest
+data1<-select(raw.data,1,32,4,5,8,33,34,35)
+
+###########################
+##load Fish Lengths file into R
+raw.data<-read.csv(here('Data','LENGTHS_RVCAT.csv'))
+raw.data<-subset(raw.data, EXP_N>0)
+reprows<-rep(1:nrow(raw.data), raw.data$EXP_N)
+data2 <- raw.data[reprows,] %>%
+  as.data.frame()
+data2 <-select(data2, 1,4:6)
+
+###########################
+###JOIN TRAWL EFFORT TO LENGTH DATA
+data3 <- inner_join(data2,unique(data1))
+
+###########################
+##Filter targets and summarize by SPECIES, YEAR, TARGET
+##Write Excel file
+sumtable1 <- data3 %>%
+  filter(TARGET==2 & YEAR >=1978 | TARGET==118 & YEAR >=2011 | TARGET==117 & YEAR >=2011 | TARGET==106 & YEAR >=1973) 
+
+sumtable2 <- sumtable1 %>%
+  group_by(SPECIES,YEAR,TARGET) %>%
+  summarize(fish_count=n(), min_L_mm=mean(LENGTH), max_L_mm=max(LENGTH), median_L_mm=median(LENGTH), mean_L_mm=mean(LENGTH))
+
+openxlsx::write.xlsx(sumtable2, here('Plots and Tables/Lengths','Length_AnnualSumry_byTarget_1978-present.xlsx'), row.names=FALSE)
+
