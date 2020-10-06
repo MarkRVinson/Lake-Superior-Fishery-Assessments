@@ -1,12 +1,12 @@
 
 ##library
+library(ggplot2)
+library(rlang)
 library(tidyverse)
 library(doBy)
 library(readxl)
-library(ggplot2)
 library(plotrix)
 library(psych)
-library(rlang)
 library(purrr)
 library(forcats)
 library(viridis)
@@ -71,6 +71,8 @@ plot_theme<-theme(axis.line=element_line(size=1, color='black'),
 ann_data_access<-'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0'
 
 ##to calculate NOHA and KGHA, need to subset out different vessels, as they have different conversion factors for area sampled
+##NEED TO SUBSET BOTTOM TRAWLS
+##MIDWATER TRAWL CALCULATIONS WILL BE DIFFERENT
 
 ##r/v siscowet from start to 1976 **note, conversion factor only verified from 1973-1976, an estimate for years prior
 siscowet76<-subset(raw.data, VESSEL==1 & YEAR<1977)
@@ -96,7 +98,7 @@ coaster93$NOHA<-((coaster93$NUM*60)/coaster93$TOW_TIME)/.6097
 coaster93$KGHA<-((coaster93$WT*.06)/coaster93$TOW_TIME)/.6097
 coaster93$HA_SWEPT<-(coaster93$TOW_TIME/60)*.6097
 
-##r/v coaster, USGS, 1988-1992 and 1994-2004  and 1993 serials>120
+##r/v coaster, USGS, 1988-1992 and 1994-present? 2004  and 1993 serials>120
 coasterUSGS1<-subset(raw.data, VESSEL==99 & YEAR<1993)
 coasterUSGS2<-subset(raw.data, VESSEL==99 & YEAR>1993)
 coasterUSGS3<-subset(raw.data, VESSEL==99 & YEAR==1993 & SERIAL>120)
@@ -146,11 +148,22 @@ all.data<-rbind(kiyi, siscowet76, siscowet77.99, grayling, coaster93, coasterUSG
 ##check that the number of rows in all.data matches the number in the raw.data input to make sure no data got lost along the way
 ##if data were lost, were any additional vessels used that are not listed above? any vessel codes changed or recorded incorrectly?
 
+####################################################################################
+
 ####################################################################################################################NEARSHORE DATA####
-##summarize nearshore data
+##pull out nearshore, TARGET = 2 data
 ns<-subset(all.data, TARGET==2 & YEAR>1977)
 
-##calculate mean biomass by year, start by getting total kgha for each station
+##Get all neashore trawls, so that zero catch trawls will be used in calculations
+ns.sites.byyear<-ns %>%
+  group_by(YEAR) %>%
+  distinct(LOCATION)
+
+ns.sites.byyear$SITECHECK<-'SURVEYED'
+ns.sites.byyear$SURVEY<-'Nearshore'
+
+
+##calculate total mean biomass by year, start by getting total kgha for each station
 ns.ann.station.sum<-aggregate(ns$KGHA, by=list(YEAR=ns$YEAR, Station=ns$LOCATION), FUN=sum)%>%
   renameCol('x','StationKGHA')
 
@@ -460,6 +473,62 @@ ggplot(ns.summary.bloater, aes(x=YEAR, y=KGHA_mean))+
                 width=0.4)+
   scale_y_continuous(expand=c(0,0),limits=c(0,NA))
 ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_bloater_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+
+##LAKE WHITEFISH!!!
+ns.ann.station.sum.lns<-filter(ns.ann.station.sum.spp.all, Species==203)
+ns.ann.station.sum.lns<-select(ns.ann.station.sum.lns, c(1:3))
+ns.summary.lns<- ns.ann.station.sum.lns%>% 
+  group_by(YEAR) %>% 
+  summarise_all(funs(mean,median,sd,std.error))%>%
+  select(c(1,3,5,7,9))
+
+ns.yr5meanlns<-subset(ns.summary.lns, YEAR>=(max(YEAR)-4))
+ns.yr10meanlns<-subset(ns.summary.lns, YEAR>=(max(YEAR)-9))
+ns.yr20meanlns<-subset(ns.summary.lns, YEAR>=(max(YEAR)-19))
+ns.yr30meanlns<-subset(ns.summary.lns, YEAR>=(max(YEAR)-29))
+ns.yr40meanlns<-subset(ns.summary.lns, YEAR>=(max(YEAR)-39))
+
+ggplot(ns.summary.lns, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Lake Whitefish Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.lns, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))+
+  geom_segment(x=(max(ns.summary.lns$YEAR)-4), xend=max(ns.summary.lns$YEAR), y=mean(ns.yr5meanlns$KGHA_mean), #5 year mean
+               yend=mean(ns.yr5meanlns$KGHA_mean), size=1.5, color='mediumorchid4')+
+  geom_segment(x=(max(ns.summary.lns$YEAR)-9), xend=max(ns.summary.lns$YEAR), y=mean(ns.yr10meanlns$KGHA_mean), #10 year mean
+               yend=mean(ns.yr10meanlns$KGHA_mean), size=1.5, color='darkolivegreen4')+
+  geom_segment(x=(max(ns.summary.lns$YEAR)-19), xend=max(ns.summary.lns$YEAR), y=mean(ns.yr20meanlns$KGHA_mean), #20 year mean
+               yend=mean(ns.yr20meanlns$KGHA_mean), size=1.5, color='cyan4')+
+  geom_segment(x=(max(ns.summary.lns$YEAR)-29), xend=max(ns.summary.lns$YEAR), y=mean(ns.yr30meanlns$KGHA_mean), #30 year mean
+               yend=mean(ns.yr30meanlns$KGHA_mean), size=1.5, color='lightpink3')+
+  geom_segment(x=(max(ns.summary.lns$YEAR)-39), xend=max(ns.summary.lns$YEAR), y=mean(ns.yr40meanlns$KGHA_mean), #40 year mean
+               yend=mean(ns.yr40meanlns$KGHA_mean), size=1.5, color='darkorange')
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_lwf.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
+ggplot(ns.summary.lns, aes(x=YEAR, y=KGHA_mean))+
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Lake Whitefish Biomass',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), breaks=c(1980,1985,1990,1995,2000,2005,2010,2015,2020,2025), 
+                     labels=c('1980','1985','1990','1995','2000','2005','2010','2015','2020','2025'))+
+  geom_errorbar(data=ns.summary.lns, aes(x=YEAR, ymin=KGHA_mean-KGHA_std.error, ymax=KGHA_mean+KGHA_std.error),
+                width=0.4)+
+  scale_y_continuous(expand=c(0,0),limits=c(0,NA))
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_lwf_nomeans.png'), dpi=300, width=40, height=20, units='cm')
+
+
+
 
 ##PYGMY WHITEFISH
 ns.ann.station.sum.pwf<-filter(ns.ann.station.sum.spp.all, Species==211)
@@ -1090,12 +1159,29 @@ ggplot(ns.spp.compare.mean, aes(x=Year, y=meanKGHA, color=COMMON_NAME))+
 
 ggsave(here('Plots and Tables/RVCAT','ns_multi_spp_biomass_lines.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
-##OFFSHORE plots and data##################################################################################################OFFSHORE###
+
+##############################################################################################
+##############################################################################################
+##############################################################################################
+##OFFSHORE plots and data#####################################################################
+####Offshore data - TARGETs =117 and 118 and depths >84 m
+
 os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
   filter(TR_DESIGN==25|TR_DESIGN==4)%>%
   filter(END_DEPTH>84)
 
+##need to cast in sites where no fish of that species were caught in offshore trawls
+
+os.sites.byyear<-os %>%
+  group_by(YEAR) %>%
+  distinct(LOCATION)
+
+os.sites.byyear$SITECHECK<-'SURVEYED'
+os.sites.byyear$SURVEY<-'Offshore'
+
+##############################################################################################
 ##calculate mean biomass by year, start by getting total kgha for each station
+
 os.ann.station.sum<-aggregate(os$KGHA, by=list(YEAR=os$YEAR, Station=os$LOCATION), FUN=sum)%>%
   renameCol('x','StationKGHA')
 
@@ -1140,9 +1226,6 @@ ggsave(here('Plots and Tables/RVCAT','os_biomass_annual_meanline.png'), dpi = 30
 
 
 ##biomass by station-------------------------------------------------------------------------------------------------------------
-os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
-  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
-  filter(END_DEPTH>84)
 ##calculate mean biomass by year, start by getting total kgha for each station
 os.ann.station.sum<-aggregate(os$KGHA, by=list(YEAR=os$YEAR, Station=os$LOCATION, Species=os$SPECIES, 
                                                EndDepth=os$END_DEPTH), FUN=sum)%>%
@@ -1207,9 +1290,6 @@ ggsave(here('Plots and Tables/RVCAT','os_biomass_bystation2.png'), dpi = 300, wi
 ##skewness plot-----------------------------------------------------------------------------------------------------OS-SKEWNESS-----
 ##summarize offshore data
 
-os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
-  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
-  filter(END_DEPTH>84)
 ##calculate mean biomass by year, start by getting total kgha for each station
 os.ann.station.sum<-aggregate(os$KGHA, by=list(YEAR=os$YEAR, Station=os$LOCATION), FUN=sum)%>%
   renameCol('x','StationKGHA')
@@ -1382,9 +1462,6 @@ new_gif
 image_write(new_gif, here('Plots and Tables/RVCAT','Animated_os_ann_biomass_map_bars.gif'))
 
 ##to plot siscowet, kiyi and deepwater sculpin biomasses---------------------------------------------------OFFSHORE SPP BIOMASS-----
-os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
-  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
-  filter(END_DEPTH>84)
 
 os.spp.compare<-subset(os, SPECIES==206|SPECIES==308|SPECIES==904)%>% 
   select(YEAR, LOCATION, SPECIES, KGHA)
@@ -1489,7 +1566,7 @@ ggplot(os.spp.compare.mean, aes(x=YEAR, y=mean))+
        subtitle='USGS bottom trawl assessment')+
   scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
                      labels=c('2011','2013','2015','2017','2019','2021','2023'),
-                     limits=c(2010, 2020))+
+                     limits=c(2010, 2021))+
   scale_y_continuous(expand=c(0,0), breaks=c(0,1,2,3,4,5),
                      labels=c('0', '1', '2','3','4','5'), limits=c(0,5))+
   geom_errorbar(data=os.spp.compare.mean, aes(x=YEAR, ymin=mean-se, ymax=mean+se), width=0.4)
@@ -1508,7 +1585,7 @@ ggplot(os.biomass.kiyi, aes(x=YEAR, y=mean))+
        subtitle='USGS bottom trawl assessment')+
   scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
                      labels=c('2011','2013','2015','2017','2019','2021','2023'),
-                     limits=c(2010, 2020))+
+                     limits=c(2010, 2021))+
   geom_errorbar(data=os.biomass.kiyi, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
                 width=0.4)+
   scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,5, by=0.5))
@@ -1522,7 +1599,7 @@ ggplot(os.biomass.kiyi, aes(x=YEAR, y=mean))+
        subtitle='USGS bottom trawl assessment')+
   scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
                      labels=c('2011','2013','2015','2017','2019','2021','2023'),
-                     limits=c(2010, 2020))+
+                     limits=c(2010, 2021))+
   geom_errorbar(data=os.biomass.kiyi, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
                 width=0.4)+
   scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,5, by=0.5))+
@@ -1541,7 +1618,7 @@ ggplot(os.biomass.dws, aes(x=YEAR, y=mean))+
        subtitle='USGS bottom trawl assessment')+
   scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
                      labels=c('2011','2013','2015','2017','2019','2021','2023'),
-                     limits=c(2010, 2020))+
+                     limits=c(2010, 2021))+
   geom_errorbar(data=os.biomass.dws, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
                 width=0.4)+
   scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,5, by=0.5))
@@ -1555,7 +1632,7 @@ ggplot(os.biomass.dws, aes(x=YEAR, y=mean))+
        subtitle='USGS bottom trawl assessment')+
   scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
                      labels=c('2011','2013','2015','2017','2019','2021','2023'),
-                     limits=c(2010, 2020))+
+                     limits=c(2010, 2021))+
   geom_errorbar(data=os.biomass.dws, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
                 width=0.4)+
   scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,5, by=0.5))+
@@ -1574,7 +1651,7 @@ ggplot(os.biomass.slt, aes(x=YEAR, y=mean))+
        subtitle='USGS bottom trawl assessment')+
   scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
                      labels=c('2011','2013','2015','2017','2019','2021','2023'),
-                     limits=c(2010, 2020))+
+                     limits=c(2010, 2021))+
   geom_errorbar(data=os.biomass.slt, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
                 width=0.4)+
   scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,7, by=0.5))
@@ -1588,7 +1665,7 @@ ggplot(os.biomass.slt, aes(x=YEAR, y=mean))+
        subtitle='USGS bottom trawl assessment')+
   scale_x_continuous(expand=c(0,0), breaks=c(2011,2013,2015,2017,2019,2021,2023), 
                      labels=c('2011','2013','2015','2017','2019','2021','2023'),
-                     limits=c(2010, 2020))+
+                     limits=c(2010, 2021))+
   geom_errorbar(data=os.biomass.slt, aes(x=YEAR, ymin=mean-se, ymax=mean+se),
                 width=0.4)+
   scale_y_continuous(expand=c(0,0),limits=c(0,NA), breaks=seq(0,7, by=0.5))+
@@ -1837,7 +1914,12 @@ ns.table<-round(ns.table[,c(1:16)], 2)
 
 write.xlsx(ns.table, here('Plots and Tables/RVCAT','ns_biomass_summary.xlsx'), row.names=F)
 
-##Lengths file to evaluate Age-1 densities###########################################################################Age-1 Densities###
+
+#####Age-1 analyses#########################################################################
+############################################################################################
+############################################################################################
+
+##Lengths file to evaluate Age-1 densities##################################################
 
 lengths<-read.csv(here('Data','LENGTHS_RVCAT.csv'))
 op.id.details<-select(all.data, c(1,2,5,8,11,17,36))
@@ -1845,133 +1927,198 @@ lengths2<-merge.data.frame(lengths, op.id.details, by='OP_ID', all=F)
 lengths3<-unique(lengths2)
 
 
-##subset age 1 fish by species. use nearshore catches for all species except kiyi
+##subset age 1 fish by species. use nearshore catches for all species except kiyi & siscowet
 rbs.a1<-lengths3%>%
   group_by(YEAR)%>%
   filter(SPECIES==109)%>%
   filter(LENGTH<101)%>%
   filter(TARGET==2)
+
 cisco.a1<-lengths3%>%
   group_by(YEAR)%>%
   filter(SPECIES==202)%>%
   filter(LENGTH<141)%>%
   filter(TARGET==2)
+
 bloater.a1<-lengths3%>%
   group_by(YEAR)%>%
   filter(SPECIES==204)%>%
   filter(LENGTH<131)%>%
   filter(TARGET==2)
-kiyi.a1<-lengths3%>%
-  group_by(YEAR)%>%
-  filter(SPECIES==206)%>%
-  filter(LENGTH<131)%>%
-  filter(TARGET==118|TARGET==117)%>%
-  filter(END_DEPTH>84)
-siscowet.a1<-lengths3%>%
-  group_by(YEAR)%>%
-  filter(SPECIES==308)%>%
-  filter(LENGTH<226)%>%
-  filter(TARGET==2)
-lean.a1<-lengths3%>%
-  group_by(YEAR)%>%
-  filter(SPECIES==317)%>%
-  filter(LENGTH<226)%>%
-  filter(TARGET==2)
+
 lwf.a1<-lengths3%>%
   group_by(YEAR)%>%
   filter(SPECIES==203)%>%
   filter(LENGTH<161)%>%
   filter(TARGET==2)
 
-age1<-rbind(rbs.a1, cisco.a1, bloater.a1, siscowet.a1, lean.a1, lwf.a1) ##bind all species evaluated using nearshore data
-##need to process kiyi separate from the nearshore species so you can cast in zeros for nearshore sites where age 1 fish were not caught
-age1.station.sum<-aggregate(age1$EXP_N, by=list(YEAR=age1$YEAR, LOCATION=age1$LOCATION, SPECIES=age1$SPECIES,
-                                                HA_SWEPT=age1$HA_SWEPT), FUN=sum)%>%
+lean.a1<-lengths3%>%
+  group_by(YEAR)%>%
+  filter(SPECIES==317)%>%
+  filter(LENGTH<226)%>%
+  filter(TARGET==2)
+
+kiyi.a1<-lengths3%>%
+  group_by(YEAR)%>%
+  filter(SPECIES==206)%>%
+  filter(LENGTH<131)%>%
+  filter(TARGET==118|TARGET==117)%>%
+  filter(END_DEPTH>84) %>%
+  filter(TR_DESIGN==25|TR_DESIGN==4) 
+
+siscowet.a1<-lengths3%>%
+  group_by(YEAR)%>%
+  filter(SPECIES==308)%>%
+  filter(LENGTH<226)%>%
+  filter(TARGET==118|TARGET==117)%>%
+  filter(END_DEPTH>84) %>%
+  filter(TR_DESIGN==25|TR_DESIGN==4) 
+
+###########################################################################
+##Nearshore species
+##bind all species being evaluated
+age1.ns<-rbind(rbs.a1, cisco.a1, bloater.a1, lwf.a1, lean.a1) 
+
+age1.ns.station.sum<-aggregate(age1.ns$EXP_N, by=list(YEAR=age1.ns$YEAR, LOCATION=age1.ns$LOCATION, 
+                                                SPECIES=age1.ns$SPECIES, HA_SWEPT=age1.ns$HA_SWEPT),
+                            FUN=sum) %>% 
   renameCol('x','N.Age1')
 
-ns<-subset(all.data, TARGET==2 & YEAR>1976)
 ##need to cast in sites where no fish of that species were caught
 ##to do this, need to figure out which sites were sampled each year
-ns.sites.byyear<-ns%>%
-  group_by(YEAR)%>%
-  distinct(LOCATION)
-ns.sites.byyear$SITECHECK<-'SURVEYED'
-os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
-  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
-  filter(END_DEPTH>84)
-##need to cast in sites where no fish of that species were caught
-##to do this, need to figure out which sites were sampled each year. offshore=for kiyi calculations
-os.sites.byyear<-os%>%
-  group_by(YEAR)%>%
-  distinct(LOCATION)
-os.sites.byyear$SITECHECK<-'SURVEYED'
+##sites.byyear <- rbind(ns.sites.byyear, os.sites.byyear)
 
-age1.station.sum<-merge.data.frame(age1.station.sum, ns.sites.byyear, all=T)
-age1.station.sum$NOHA<-age1.station.sum$N.Age1/age1.station.sum$HA_SWEPT
-age1.cast<-cast(age1.station.sum, YEAR+LOCATION~SPECIES, value='NOHA', fun.aggregate = 'mean')
-age1.cast[is.na(age1.cast)]<-0
-age1.cast<-select(age1.cast, c(1:8))
-age1.cast<-melt(age1.cast, id=c('YEAR', 'LOCATION')) ##use this file later to map species densities
-age1.ann.mean<-aggregate(age1.cast$value, by=list(Year=age1.cast$YEAR, SPECIES=age1.cast$SPECIES), FUN=mean)%>%
+age1.ns.station.sum <- merge.data.frame(age1.ns.station.sum, ns.sites.byyear, all=T)
+
+age1.ns.station.sum$NOHA<-age1.ns.station.sum$N.Age1/age1.ns.station.sum$HA_SWEPT
+
+age1.ns.cast<-cast(age1.ns.station.sum, YEAR+LOCATION~SPECIES, value='NOHA', fun.aggregate = 'mean')
+age1.ns.cast[is.na(age1.ns.cast)]<-0
+age1.ns.cast<-select(age1.ns.cast, c(1:7))
+
+age1.ns.cast <- age1.ns.cast %>%
+  pivot_longer(cols = 3:7, names_to = "SPECIES", values_to = "NOHA") 
+
+
+age1.ns.ann.mean<-aggregate(age1.ns.cast$NOHA, by=list(YEAR=age1.ns.cast$YEAR, 
+                                                 SPECIES=age1.ns.cast$SPECIES), FUN=mean)%>%
   renameCol('x','Mean.NOHA')
 
-##now calculate kiyi (and any other offshore fishes if added later)
-kiyi.a1<-aggregate(kiyi.a1$EXP_N,  by=list(YEAR=kiyi.a1$YEAR, LOCATION=kiyi.a1$LOCATION, SPECIES=kiyi.a1$SPECIES,
-                                          HA_SWEPT=kiyi.a1$HA_SWEPT), FUN=sum)%>%
+age1.ns.ann.mean<-merge.data.frame(age1.ns.ann.mean, sci.names, all=F) %>%
+  select(c(2,3,4))  
+
+#####################################################################################################
+
+###########################################################################
+##Offshore species
+##bind all species being evaluated
+age1.os<-rbind(kiyi.a1, siscowet.a1) 
+
+age1.os.station.sum<-aggregate(age1.os$EXP_N, by=list(YEAR=age1.os$YEAR, LOCATION=age1.os$LOCATION, 
+                                                      SPECIES=age1.os$SPECIES, HA_SWEPT=age1.os$HA_SWEPT),
+                               FUN=sum) %>% 
   renameCol('x','N.Age1')
-kiyi.a1<-merge.data.frame(kiyi.a1, os.sites.byyear, all=T)
-kiyi.a1$NOHA<-kiyi.a1$N.Age1/kiyi.a1$HA_SWEPT
-kiyi.age1.cast<-cast(kiyi.a1, YEAR+LOCATION~SPECIES, value='NOHA', fun.aggregate = 'mean')
-kiyi.age1.cast[is.na(kiyi.age1.cast)]<-0
-kiyi.age1.cast<-select(kiyi.age1.cast, c(1:3))
-kiyi.age1.cast<-melt(kiyi.age1.cast, id=c('YEAR', 'LOCATION'))
 
-kiyi.a1.ann.mean<-aggregate(kiyi.age1.cast$value, by=list(Year=kiyi.age1.cast$YEAR, SPECIES=kiyi.age1.cast$SPECIES), FUN=mean)%>%
+##need to cast in sites where no fish of that species were caught
+##to do this, need to figure out which sites were sampled each year
+##sites.byyear <- rbind(ns.sites.byyear, os.sites.byyear)
+
+age1.os.station.sum <- merge.data.frame(age1.os.station.sum, os.sites.byyear, all=T)
+
+age1.os.station.sum$NOHA<-age1.os.station.sum$N.Age1/age1.os.station.sum$HA_SWEPT
+
+age1.os.cast<-cast(age1.os.station.sum, YEAR+LOCATION~SPECIES, value='NOHA', fun.aggregate = 'mean')
+age1.os.cast[is.na(age1.os.cast)]<-0
+age1.os.cast<-select(age1.os.cast, c(1:5))
+
+age1.os.cast <- age1.os.cast %>%
+  pivot_longer(cols = 3:5, names_to = "SPECIES", values_to = "NOHA") 
+
+
+age1.os.ann.mean<-aggregate(age1.os.cast$NOHA, by=list(YEAR=age1.os.cast$YEAR, 
+                                                       SPECIES=age1.os.cast$SPECIES), FUN=mean)%>%
   renameCol('x','Mean.NOHA')
 
-##bind together nearshore and offshore calculations and format for table export 
-age1.ann.mean<-rbind(age1.ann.mean, kiyi.a1.ann.mean)
-age1.ann.mean<-merge.data.frame(age1.ann.mean, sci.names, all=F)%>%
-  select(c(2,3,4))
-age1.ann.mean2<-cast(age1.ann.mean, Year~COMMON_NAME, value='Mean.NOHA')
-age1.ann.mean2$'Year Class'<-age1.ann.mean2$Year-1
-  
-age1.table<-select(age1.ann.mean2, c('Year','Year Class','Rainbow Smelt','Cisco','Bloater','Lake Whitefish','Kiyi','lean Lake Trout',
-                                     'siscowet Lake Trout')) ##if any spp added in future, select them in the order you want here
-age1.table<-round(age1.table, 2) ##if you want more or less decimal places, adjust the numeric value here to the number you want
-age1.table<-age1.table%>%
-  filter(Year>1977) ##select the most recent 40 years, or whatever time period is desired
-age1.table[is.na(age1.table)]<-'N/A' ##kiyi will have N/A values for years prior to the start of the offshore cruise (2011)
+age1.os.ann.mean<-merge.data.frame(age1.os.ann.mean, sci.names, all=F) %>%
+  select(c(2,3,4))  
+
+#####################################################################################################
+##Create age-1 summary table for export
+age1.table<-rbind(age1.ns.ann.mean, age1.os.ann.mean) 
+
+age1.table<-age1.table %>%
+  pivot_wider(names_from = COMMON_NAME, values_from = Mean.NOHA) %>%
+  mutate('Year Class' = YEAR-1)
+
+##if you want more or less decimal places, adjust the numeric value here to the number you want
+age1.table<-round(age1.table, 2) 
+
+##select the most recent 40 years, or whatever time period is desired
+age1.table<-age1.table %>%
+  filter(YEAR>1977)
+
 
 write.xlsx(age1.table, here('Plots and Tables/RVCAT','ns_Age1_summary.xlsx'), row.names = F)
 
-##plot of recent age-1 ciscoe densities
-a1.ciscoes<-age1.ann.mean%>%
-  filter(COMMON_NAME=='Bloater'|COMMON_NAME=='Cisco'|COMMON_NAME=='Kiyi')%>%
-  filter(Year>1977) ##NOTE: if you select any years before 2011, kiyi will not have data bc it's calculated w/offshore sites
 
-ggplot(a1.ciscoes, aes(x=(Year-1), y=Mean.NOHA))+
+#####################################################################################################
+##plot of recent age-1 LWF densities
+####Combine nearshore and offshore fishes
+
+age1.ns.os.ann.mean<-rbind(age1.ns.ann.mean, age1.os.ann.mean) 
+
+##Plot of LWF age-1 fish
+a1.lwf<-age1.ns.os.ann.mean%>%
+  filter(COMMON_NAME=='Lake Whitefish')%>%
+  filter(YEAR>1977) ##NOTE: if you select any years before 2011, kiyi will not have data bc it's calculated w/offshore sites
+
+ggplot(a1.lwf, aes(x=(YEAR-1), y=Mean.NOHA))+
+  geom_point(size=6)+
+  geom_segment(aes(x=YEAR-1, xend=YEAR-1, y=0, yend=Mean.NOHA), size=1, color='black')+
+##  geom_bar(stat='identity', fill='grey75',color='black')+
+##  facet_grid(COMMON_NAME~., scales='free')+
+  plot_theme+
+  labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
+       title='Lake Superior Age-1 Lake Whitefish Abundance',
+       subtitle='USGS bottom trawl assessment') +
+  scale_x_continuous(expand=c(0,0), limits=c(1977,max(a1.lwf$YEAR)), breaks=seq(1977,max(a1.lwf$YEAR), by=5))+
+  scale_y_continuous(expand=c(0,0),breaks = scales::pretty_breaks(5))+
+  scale_color_viridis(discrete=T, name='')
+
+ggsave(here('Plots and Tables/RVCAT','ns_Age1_lwf.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+#################################################################################################
+##plot of recent age-1 ciscoe densities
+a1.ciscoes<-age1.ns.os.ann.mean%>%
+  filter(COMMON_NAME=='Bloater'|COMMON_NAME=='Cisco'|COMMON_NAME=='Kiyi')%>%
+  filter(YEAR>1977) ##NOTE: if you select any YEARs before 2011, kiyi will not have data bc it's calculated w/offshore sites
+
+ggplot(a1.ciscoes, aes(x=(YEAR-1), y=Mean.NOHA))+
   geom_bar(stat='identity', fill='grey75',color='black')+
   facet_grid(COMMON_NAME~., scales='free')+
   plot_theme+
   labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
        title='Lake Superior Age-1 Ciscoe Abundance',
        subtitle='USGS bottom trawl assessment')+
-  scale_x_continuous(expand=c(0,0))+
-  scale_y_continuous(expand=c(0,0))+
+  scale_x_continuous(expand=c(0,0), limits=c(1977,max(a1.ciscoes$YEAR)), breaks=seq(1977,max(a1.ciscoes$YEAR), by=5))+
+  scale_y_continuous(expand=c(0,0),breaks = scales::pretty_breaks(5))+
+#  scale_x_continuous(expand=c(0,0))+
+#  scale_y_continuous(expand=c(0,0))+
   scale_color_viridis(discrete=T, name='')
 
-ggsave(here('Plots and Tables/RVCAT','ns_Age1_ciscoes.png'), dpi = 300, width = 40, height = 20, units = "cm")
+ggsave(here('Plots and Tables/RVCAT','ns_Age1_ciscoes.bar.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
-ggplot(a1.ciscoes, aes(x=(Year-1), y=Mean.NOHA))+
+
+#################################################################################################
+ggplot(a1.ciscoes, aes(x=(YEAR-1), y=Mean.NOHA))+
   geom_point(size=6)+
-  geom_segment(aes(x=Year-1, xend=Year-1, y=0, yend=Mean.NOHA), size=1, color='black')+
+  geom_segment(aes(x=YEAR-1, xend=YEAR-1, y=0, yend=Mean.NOHA), size=1, color='black')+
   facet_grid(COMMON_NAME~., scales='free_y')+
   plot_theme+
   labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
        title='Lake Superior Age-1 Ciscoe Abundance',
        subtitle='USGS bottom trawl assessment')+
-  scale_x_continuous(expand=c(0,0), limits=c(1977,max(a1.ciscoes$Year)), breaks=seq(1977,max(a1.ciscoes$Year), by=5))+
+  scale_x_continuous(expand=c(0,0), limits=c(1977,max(a1.ciscoes$YEAR)), breaks=seq(1977,max(a1.ciscoes$YEAR), by=5))+
   scale_y_continuous(expand=c(0,0),breaks = scales::pretty_breaks(5))+
   theme(panel.spacing=unit(2,'lines'))+
   coord_cartesian(clip='off')+
@@ -1979,37 +2126,75 @@ ggplot(a1.ciscoes, aes(x=(Year-1), y=Mean.NOHA))+
 
 ggsave(here('Plots and Tables/RVCAT','ns_Age1_ciscoes_lollipop.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
-a1.bloater.cisco<-a1.ciscoes%>%
-  filter(COMMON_NAME=='Bloater'| COMMON_NAME=='Cisco')
-ggplot(a1.bloater.cisco, aes(x=(Year-1), y=Mean.NOHA))+
+
+#################################################################################################
+#################################################################################################
+a1.bl.cis<-age1.ns.os.ann.mean%>%
+  filter(COMMON_NAME=='Bloater'|COMMON_NAME=='Cisco')%>%
+  filter(YEAR>1977) ##NOTE: if you select any YEARs before 2011, kiyi will not have data bc it's calculated w/offshore sites
+
+ggplot(a1.bl.cis, aes(x=(YEAR-1), y=Mean.NOHA))+
   geom_point(size=6)+
-  geom_segment(aes(x=Year-1, xend=Year-1, y=0, yend=Mean.NOHA), size=1, color='black')+
+  geom_segment(aes(x=YEAR-1, xend=YEAR-1, y=0, yend=Mean.NOHA), size=1, color='black')+
   facet_grid(COMMON_NAME~., scales='free_y')+
   plot_theme+
-  labs(x='Year Class', y='Age-1 Abundance (number/hectare)', caption=ann_data_access,
-       title='Lake Superior Age-1 Bloater and Cisco Abundance',
+  labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
+       title='Lake Superior Age-1 Ciscoe Abundance',
        subtitle='USGS bottom trawl assessment')+
-  scale_x_continuous(expand=c(0,0), limits=c(1977,max(a1.ciscoes$Year)), breaks=seq(1977,max(a1.ciscoes$Year), by=5))+
+  scale_x_continuous(expand=c(0,0), limits=c(1977,max(a1.ciscoes$YEAR)), breaks=seq(1977,max(a1.ciscoes$YEAR), by=5))+
   scale_y_continuous(expand=c(0,0),breaks = scales::pretty_breaks(5))+
   theme(panel.spacing=unit(2,'lines'))+
   coord_cartesian(clip='off')+
   geom_hline(yintercept=0, color='black', size=1)
 
-ggsave(here('Plots and Tables/RVCAT','ns_Age1_bl_ci_lollipop.png'), dpi = 300, width = 40, height = 20, units = "cm")
+ggsave(here('Plots and Tables/RVCAT','ns_Age1_bl_cis_lollipop.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
+#################################################################################################
+##Lean and Siscowet Age-1 densities
+
+a1.lt.sis<-age1.ns.os.ann.mean%>%
+  filter(COMMON_NAME=='lean Lake Trout'|COMMON_NAME=='siscowet Lake Trout')%>%
+  filter(YEAR>1977) ##NOTE: if you select any YEARs before 2011, kiyi will not have data bc it's calculated w/offshore sites
+
+ggplot(a1.lt.sis, aes(x=(YEAR-1), y=Mean.NOHA))+
+  geom_point(size=6)+
+  geom_segment(aes(x=YEAR-1, xend=YEAR-1, y=0, yend=Mean.NOHA), size=1, color='black')+
+  facet_grid(COMMON_NAME~., scales='free_y')+
+  plot_theme+
+  labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
+       title='Lake Superior Age <3 Lake Trout Abundance',
+       subtitle='USGS bottom trawl assessment')+
+  scale_x_continuous(expand=c(0,0), limits=c(1977,max(a1.ciscoes$YEAR)), breaks=seq(1977,max(a1.ciscoes$YEAR), by=5))+
+  scale_y_continuous(expand=c(0,0),breaks = scales::pretty_breaks(5))+
+  theme(panel.spacing=unit(2,'lines'))+
+  coord_cartesian(clip='off')+
+  geom_hline(yintercept=0, color='black', size=1)
+
+ggsave(here('Plots and Tables/RVCAT','ns_Age1_lt_sis_lollipop.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+#################################################################################################
+#################################################################################################
 ##map of age-1 cisco and bloater densities
-a1.cisco<-age1.cast%>%
+age1.ns.os <- rbind(age1.ns, age1.os)
+  age1.ns.os$NOHA<-age1.ns.os$EXP_N/age1.ns.os$HA_SWEPT
+
+a1.map.bl.cis<-age1.ns.os%>%
   filter(SPECIES==202|SPECIES==204)%>% ##enter other species codes here if you want to map a different species
   filter(YEAR>1977) ##select the years you want to map here
-a1.cisco<-aggregate(a1.cisco$value, by=list(YEAR=a1.cisco$YEAR, LOCATION=a1.cisco$LOCATION), FUN=sum)%>%
-  renameCol('x','value')
+
+a1.map.bl.cis<-aggregate(a1.map.bl.cis$NOHA, by=list(YEAR=a1.map.bl.cis$YEAR, 
+                                                LOCATION=a1.map.bl.cis$LOCATION), FUN=sum)%>% 
+  renameCol('x','NOHA')
+
+####
 latlong<-select(all.data, c(4,5,8,32,33))
-latlong<-latlong%>%
+latlong<-latlong %>%
   filter(TARGET==2)
 latlong<-latlong[!duplicated(latlong$LOCATION),] ##get coordinates for each site 
 latlong<-select(latlong, c(2:5))
+a1.cisco2<-merge.data.frame(a1.map.bl.cis, latlong, by='LOCATION')
 
-a1.cisco2<-merge.data.frame(a1.cisco, latlong, by='LOCATION')
+######
 a1.cisco2$YrClass<-a1.cisco2$YEAR-1
 
 ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "lake_superior")
@@ -2018,7 +2203,7 @@ ls_poly.fort <- fortify(ls_poly)
 
 cisco<-ggplot(a1.cisco2, aes(Mid.Long.DD, Mid.Lat.DD)) +
   geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ ##path for lake outline
-  geom_point(data=a1.cisco2, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=log(value), size=log(value)))+ 
+  geom_point(data=a1.cisco2, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=log(NOHA), size=log(NOHA)))+ 
   theme_bw() + 
   scale_y_continuous(name='Latitude')+
   scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
@@ -2045,16 +2230,19 @@ a1c_gif<-animate(cisco, fps = .5, end_pause = 15, nframes=57, ##NOTE: as more ye
 a1c_gif
 anim_save(here('Plots and Tables/RVCAT','Animated_A1Cisco_map.gif')) ##saves just map, before adding other plots
 
-a1.cisco3<-aggregate(a1.cisco2$value, by=list(YrClass=a1.cisco2$YrClass), FUN=mean)%>%
-  renameCol('x','value')
-a1c_bars<-ggplot(a1.cisco3, aes(x=YrClass, y=value))+
+
+#################################################################################################
+a1.cisco3<-aggregate(a1.cisco2$NOHA, by=list(YrClass=a1.cisco2$YrClass), FUN=mean)%>%
+  renameCol('x','NOHA')
+
+a1c_bars<-ggplot(a1.cisco3, aes(x=YrClass, y=NOHA))+
   geom_col(fill='gray80', color='black')+
   geom_point(size=3, color='black', shape=18)+
   geom_hline(yintercept=0, size=1)+
   plot_theme+
   theme(legend.position=c(0.8,0.8),
         legend.title.align = 0.5)+
-  scale_y_continuous(limits=c(-1,800))+
+  scale_y_continuous(limits=c(0,800))+
   labs(y='Lakewide mean abundance (n per ha)', x='Year Class', title=' ', 
        caption='  ', subtitle='  ')+
   transition_manual(YrClass, cumulative=T)
@@ -2073,27 +2261,10 @@ for(i in 2:57){ ##NOTE: as more years are added, need to increase the # frames t
 new_gif
 image_write(new_gif, here('Plots and Tables/RVCAT','Animated_ns_Age1_cisco_map_bars.gif'))
 
-
-##lollipop plot of bloater and cisco age-1 densities
-ggplot(a1.cisco3, aes(x=YrClass, y=value, fill=value))+
-  geom_hline(yintercept=0, color='black',size=1)+
-  geom_segment(aes(x=YrClass, xend=YrClass, y=0, yend=value), size=1, color='black')+
-  geom_point(size=6, shape=21)+
-  scale_fill_continuous(high='red',low='cadetblue2', name='Abundance\n(n per ha)')+
-  plot_theme+
-  labs(x='Year Class', y='Lakewide mean abundance (n per ha)',
-       title='Lake Superior Age-1 Cisco and Bloater Abundance',
-       subtitle='USGS bottom trawl assessment',
-       caption=ann_data_access)+
-  theme(axis.line.x=element_blank(),
-        legend.position=c(0.9,0.8))
-
-ggsave(here('Plots and Tables/RVCAT','ns_Age1_bloater_cisco_lollipop.png'), dpi = 300, width = 40, height = 20, units = "cm")
-
+#################################################################################################
 
 ##age-1 ciscoes by station for the current year
-a1.current<-rbind(age1.cast, kiyi.age1.cast)
-a1.current<-a1.current%>%
+a1.current<-age1.ns.os %>%
   filter(SPECIES==202|SPECIES==204|SPECIES==206)%>%
   filter(YEAR==max(YEAR))
 dates<-all.data%>%
@@ -2103,7 +2274,7 @@ dates<-dates[!duplicated(dates$LOCATION),]
 a1.current<-merge.data.frame(a1.current, dates, all=F)
 a1.current<-merge.data.frame(a1.current, sci.names)
 a1.current$station<-as.factor(a1.current$LOCATION)
-a1.current$a1presence<-if_else(a1.current$value>0,'present','absent')
+a1.current$a1presence<-if_else(a1.current$NOHA>0,'present','absent')
 
 ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "lake_superior")
 ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
@@ -2141,7 +2312,7 @@ a1map2<-ggplot(a1.current, aes(Mid.Long.DD, Mid.Lat.DD)) +
 
 ggsave(plot=a1map2,here('Plots and Tables/RVCAT','ns_Age1_sites_abundance_map2.png'), dpi = 300, width = 30, height = 16, units = "cm")
 
-ggplot(a1.current, aes(x=station, y=value, fill=COMMON_NAME))+
+ggplot(a1.current, aes(x=station, y=NOHA, fill=COMMON_NAME))+
   geom_bar(position='stack', stat='identity')+
   aes(x=fct_reorder(station, OP_DATE))+
   annotation_custom(ggplotGrob(a1map), xmin=20, xmax=100, ymin=35, ymax=240)+
@@ -2157,7 +2328,10 @@ ggplot(a1.current, aes(x=station, y=value, fill=COMMON_NAME))+
 
 ggsave(here('Plots and Tables/RVCAT','ns_Age1_ciscoes_bydate.png'), height=20, width=40, dpi=300, units='cm')
 
-##Animated map of sites sampled in the current year and corresponding fish biomass and diversity#####################################
+
+#########################################################################################################
+##Animated map of sites sampled in the current year and corresponding fish biomass and diversity#########
+#########################################################################################################
 
 all.current.yr<-all.data%>%
   filter(YEAR==max(YEAR))%>% ##if you want a year other than the most recent, change this to YEAR==desired year (ie YEAR==2010)
@@ -2483,63 +2657,10 @@ ggplot(ns.periodmeans, aes(x=percentchange, y=Spp, fill=posneg))+
 
 ggsave(here('Plots and Tables/RVCAT','ns_periods_comparison.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
-##Bar chart race, ns biomass--------------------------------------------------------------------------------------------------------------------------
-library(reshape2)
-ns.bcr<-read_excel(here('Plots and Tables/RVCAT','ns_biomass_summary.xlsx')) ##uses the biomass table made earlier. make sure this file is updated first
-ns.bcr<-select(ns.bcr, c(1, 7:15))
-ns.bcr2<-reshape2::melt(ns.bcr, id.vars='Year')
-ns.bcr2<-ns.bcr2%>%
-  renameCol('variable','Species')%>%
-  renameCol('value','kg.ha')
-
-anim_table <- ns.bcr2 %>%
-  dplyr::group_by(Year) %>%
-  dplyr::mutate(
-    rank = min_rank(-kg.ha) * 1,
-    Value_rel = kg.ha / kg.ha[rank == 1],
-    Value_lbl = paste0(" ", kg.ha)
-  ) %>%
-  dplyr::filter(rank <= 10) %>%
-  dplyr::ungroup()
-
-ns.bcr3<-ns.bcr2
-ns.bcr3<-ns.bcr3[order(ns.bcr3[,'Year'], ns.bcr3[,'kg.ha']),]
-ns.bcr3$rank<-9:1
-
-
-
-
-p<-ggplot(ns.bcr3, aes(rank, frame=Year))+
-  geom_tile(aes(y=kg.ha/2, height=kg.ha, width=0.9, fill=Species))+
-  geom_text(aes(y=0, label=paste(Species, "  ")), size=5, vjust=0.2, hjust=1)+
-  coord_flip(clip='off', expand=F)+
-  scale_y_continuous(labels=scales::comma)+
-  scale_x_reverse()+
-  scale_fill_viridis(discrete=T, guide=F)+
-  labs(title='Lake Superior Annual Nearshore Fish Biomass', y='Mean biomass (kg/hectare)', x=' ',
-       subtitle='{round(frame_time,0)}',
-       caption=ann_data_access)+
-  theme(plot.margin = margin(1,1,1,6, 'cm'),
-        panel.background = element_blank(),
-        axis.text.y=element_blank(),
-        axis.ticks.y=element_blank(),
-        plot.title=element_text(size=20),
-        axis.text.x=element_text(size=18, color='black'),
-        axis.title.x=element_text(size=18, color='black'),
-        axis.line=element_line(size=1),
-        plot.subtitle = element_text(size=18),
-        plot.caption=element_text(size=15))+
-  transition_time(Year)+
-  ease_aes('cubic-in-out')
-animate(p, fps = 4, nframes=200, width = 1024, height = 512, renderer=gifski_renderer(loop=T), end_pause=20) ##nframes =n years x2-1
-anim_save(here("Plots and Tables/RVCAT",'Animated_ns_bar_race.gif'))
 
 ###########################################################################################
 ##DATA EXPORT ALL SPECIES, YEARS, SITES
 ###########################################################################################
-os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010)%>%
-  filter(TR_DESIGN==25|TR_DESIGN==4)%>%
-  filter(END_DEPTH>84)
 
 ns<-subset(all.data, TARGET==2 & YEAR>1977)
 
@@ -2547,7 +2668,7 @@ ns<-subset(all.data, TARGET==2 & YEAR>1977)
 ns.all<-select(ns, c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.Lat.DD,Mid.Long.DD,TR_DESIGN,
                      BEG_DEPTH,END_DEPTH,SPECIES,HA_SWEPT,NUM,NOHA,KGHA))
 ns.all.num<-cast(ns.all, OP_ID+OP_DATE+TIME+YEAR+TARGET+LOCATION+Mid.Lat.DD+Mid.Long.DD+TR_DESIGN+
-               BEG_DEPTH+END_DEPTH+HA_SWEPT~SPECIES, value='NUM')
+                   BEG_DEPTH+END_DEPTH+HA_SWEPT~SPECIES, value='NUM')
 ns.all.num[is.na(ns.all.num)]<-0
 ns.all.noha<-cast(ns.all, OP_ID+OP_DATE+TIME+YEAR+TARGET+LOCATION+Mid.Lat.DD+Mid.Long.DD+TR_DESIGN+
                     BEG_DEPTH+END_DEPTH+HA_SWEPT~SPECIES, value='NOHA')
@@ -2560,7 +2681,7 @@ ns.all.num2<-melt(ns.all.num, id=c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.L
                                    TR_DESIGN,BEG_DEPTH,END_DEPTH,HA_SWEPT))
 ns.all.num2<-renameCol(ns.all.num2, 'value','NUM')
 ns.all.noha2<-melt(ns.all.noha, id=c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.Lat.DD,Mid.Long.DD,
-                                    TR_DESIGN,BEG_DEPTH,END_DEPTH,HA_SWEPT))
+                                     TR_DESIGN,BEG_DEPTH,END_DEPTH,HA_SWEPT))
 ns.all.noha2<-renameCol(ns.all.noha2, 'value','NOHA')
 ns.all.kgha2<-melt(ns.all.kgha, id=c(OP_ID,OP_DATE,TIME,YEAR,TARGET,LOCATION,Mid.Lat.DD,Mid.Long.DD,
                                      TR_DESIGN,BEG_DEPTH,END_DEPTH,HA_SWEPT))
@@ -2612,7 +2733,58 @@ list.sheets<-list('Nearshore_Zeros'=ns.all.complete, 'Offshore_Zeros'=os.all.com
 
 openxlsx::write.xlsx(list.sheets, here('Plots and Tables/RVCAT','ns_os_all.xlsx'))
 ####################################################################################
+
 ####################################################################################
+
+##Bar chart race, ns biomass--------------------------------------------------------------------------------------------------------------------------
+library(reshape2)
+ns.bcr<-read_excel(here('Plots and Tables/RVCAT','ns_biomass_summary.xlsx')) ##uses the biomass table made earlier. make sure this file is updated first
+ns.bcr<-select(ns.bcr, c(1, 7:15))
+ns.bcr2<-reshape2::melt(ns.bcr, id.vars='Year')
+ns.bcr2<-ns.bcr2%>%
+  renameCol('variable','Species')%>%
+  renameCol('value','kg.ha')
+
+anim_table <- ns.bcr2 %>%
+  dplyr::group_by(Year) %>%
+  dplyr::mutate(
+    rank = min_rank(-kg.ha) * 1,
+    Value_rel = kg.ha / kg.ha[rank == 1],
+    Value_lbl = paste0(" ", kg.ha)
+  ) %>%
+  dplyr::filter(rank <= 10) %>%
+  dplyr::ungroup()
+
+ns.bcr3<-ns.bcr2
+ns.bcr3<-ns.bcr3[order(ns.bcr3[,'Year'], ns.bcr3[,'kg.ha']),]
+ns.bcr3$rank<-9:1
+
+
+p<-ggplot(ns.bcr3, aes(rank, frame=Year))+
+  geom_tile(aes(y=kg.ha/2, height=kg.ha, width=0.9, fill=Species))+
+  geom_text(aes(y=0, label=paste(Species, "  ")), size=5, vjust=0.2, hjust=1)+
+  coord_flip(clip='off', expand=F)+
+  scale_y_continuous(labels=scales::comma)+
+  scale_x_reverse()+
+  scale_fill_viridis(discrete=T, guide=F)+
+  labs(title='Lake Superior Annual Nearshore Fish Biomass', y='Mean biomass (kg/hectare)', x=' ',
+       subtitle='{round(frame_time,0)}',
+       caption=ann_data_access)+
+  theme(plot.margin = margin(1,1,1,6, 'cm'),
+        panel.background = element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        plot.title=element_text(size=20),
+        axis.text.x=element_text(size=18, color='black'),
+        axis.title.x=element_text(size=18, color='black'),
+        axis.line=element_line(size=1),
+        plot.subtitle = element_text(size=18),
+        plot.caption=element_text(size=15))+
+  transition_time(Year)+
+  ease_aes('cubic-in-out')
+animate(p, fps = 4, nframes=200, width = 1024, height = 512, renderer=gifski_renderer(loop=T), end_pause=20) ##nframes =n years x2-1
+
+anim_save(here("Plots and Tables/RVCAT",'Animated_ns_bar_race.gif'))
 
 
 
@@ -2655,6 +2827,7 @@ catch.yr <- tidyr::gather(catch.yr, Survey, Count, -Fish)
 Fish <- unique(as.character(catch.yr$Fish))
 nodes <- data.frame(node = c(0:26), 
                     name = c(Fish, "Nearshore", "Offshore"))
+
 #create links dataframe
 catch.yr <- merge(catch.yr, nodes, by.x = "Fish", by.y = "name")
 catch.yr <- merge(catch.yr, nodes, by.x = "Survey", by.y = "name")
