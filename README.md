@@ -11,7 +11,7 @@ R project that contains a suite of data and R programs for summarizing and prese
   2. Site_Names.xlsx, Contains site names, mid-point latitude and longitude, and management unit information
   3. Species_Taxonomy.xlsx, Fish species taxonomy
   4. Table_of_Contents.xlsx, Information on the RVCAT.R code that summarizes, analyzes, and creates graphical products. Likely not up to date, but it's better than nothing.
-  5. trawl_constants_by_vessel.xlsx, Contains equations and the constants used to calculate area swept for different vessels
+  5. LSBS_Trawl_Information_Vessel_Consants.xlsx, Contains equations and the constants used to calculate area swept for different vessels, as well as trawl and door specifications
   6. LENGTHS_RVCAT.csv, Fish length data. File is created as spool out of RVCAT system.
   7. LS_GLERL_Ice.csv, Downloaded from https://www.glerl.noaa.gov/data/ice/#historical
   8. LS_GLERL_WTemp, Downloaded from https://coastwatch.glerl.noaa.gov/statistic/statistic.html
