@@ -5,6 +5,9 @@ R project that contains a suite of data and R programs for summarizing and prese
 [<img src="ns_annual_biomass_ciscobloater_lwf.png?raw=true"/>](ns_annual_biomass_ciscobloater_lwf.png) 
 <br>
 <br>
+[<img src="Animated_ciscoe_pies.gif?raw=true"/>](Animated_ciscoe_pies.gif) 
+<br>
+<br>
 ## Directories
 /Data
   1. RVCAT.csv, Contains all the fish catch and effort data. File is created as spool out of RVCAT system.
