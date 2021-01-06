@@ -1,5 +1,5 @@
 # RVCAT
-R project that contains a suite of data and R programs for summarizing and presenting data from the Research Vessel Catch database (RVCAT, doi.org/10.5066/F75M63X0) for Lake Superior
+An R-stats project that contains a suite of data and analysis scripts for summarizing and presenting data from the Research Vessel Catch database (RVCAT, doi.org/10.5066/F75M63X0) for Lake Superior
 <br>
 <br>
 [<img src="Animated_age1_pies.gif?raw=true"/>](Animated_age1_pies.gif) 
