@@ -298,15 +298,15 @@ map_theme<-theme(axis.text=element_text(size=20, family='serif'),
 
 plot_theme<-theme(axis.line=element_line(size=1, color='black'),
                   panel.background = element_rect(NA),
-                  axis.text=element_text(size=20, family='serif'),
-                  axis.title=element_text(size=20, family='serif'),
+                  axis.text=element_text(size=16, family='serif'),
+                  axis.title=element_text(size=16, family='serif'),
                   plot.margin = margin(.5,.5,.5,.5,"cm"),
                   legend.text=element_text(size=16, family='serif'),
-                  legend.title=element_text(size=20, family='serif'),
+                  legend.title=element_text(size=18, family='serif'),
                   axis.ticks=element_line(size=1, color='black'),
-                  plot.title=element_text(size=24, family='serif'),
+                  plot.title=element_text(size=20, family='serif'),
                   plot.subtitle=element_text(size=16, family='serif'),
-                  plot.caption=element_text(size=16, family='serif'),
+                  plot.caption=element_text(size=14, family='serif'),
                   legend.background = element_blank(),
                   legend.key = element_blank(),
                   strip.text=element_text(size=16, family='serif'))
@@ -314,8 +314,291 @@ plot_theme<-theme(axis.line=element_line(size=1, color='black'),
 ann_data_access<-'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0'
 
 ####################################################################################################################NEARSHORE DATA####
+###Miscellaneous small data requests
+##sl <- subset(all.data, SPECIES == 5)
+
+##pig<-all.data %>%
+##  distinct(all.data, OP_ID)
+
+
+##ggplot(sl, aes(x=YEAR, y=NUM))+
+##  geom_bar(stat='identity', fill='grey75', color='black')+
+##  scale_x_continuous(breaks = pretty_breaks()) +
+##  scale_y_continuous(expand=c(0,0)) +
+##  plot_theme+
+##  labs(x='Year', y='Count',caption=ann_data_access,
+##       title='Lake Superior Sea Lamprey Catches',
+##       subtitle='USGS bottom trawl assessments') 
+
+##ggsave(here('Plots and Tables/RVCAT','PigPlot.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
+###########################################################################################
+###########################################################################################
+##DATA EXPORT NEARSHORE AND OFFSHORE DATA ALL SPECIES, YEARS, SITES
+###########################################################################################
+##############################################################################
+sci.names$SPECIES<-as.factor(sci.names$SPECIES)
+
+export.ns.os <- all.data %>%
+  select(OP_ID,OP_DATE,YEAR,TIME,TARGET,TR_DESIGN,M_UNIT,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+         BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
+         DISTANCE,HA_SWEPT,SPECIES,NUM,NOHA,KGHA) %>%
+  subset(YEAR >= 1974) %>% 
+  subset(TARGET==2 | TARGET==118 | TARGET==117 & YEAR>2010 & END_DEPTH>84) %>% 
+  subset(TR_DESIGN==25 | TR_DESIGN==4) %>%
+#  subset(M_UNIT == "WI2") %>% 
+  mutate(survey = str_replace_all(TARGET, c("2" = "nearshore", "117" = "offshore", 
+                                            "118" = "offshore"))) %>%
+  left_join(sci.names)
+
+export.Catch.NoZeros <- export.ns.os %>%
+  select(OP_ID,survey,OP_DATE,TIME,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+         BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
+         DISTANCE,HA_SWEPT,SPECIES,COMMON_NAME,SCIENTIFIC_NAME,NUM,NOHA,KGHA) %>%
+  mutate(TRAWL_TYPE = "Bottom trawl") 
+
+##If weights were NOT taken replace KGHA with 'na'
+export.Catch.NoZeros$KGHA[export.Catch.NoZeros$KGHA == 0 & export.Catch.NoZeros$NUM >0] <- NA
+
+##Pull out all individual trawls
+export.trawls<-export.ns.os  %>%
+  select(OP_ID,OP_DATE,TIME,survey, YEAR,LOCATION,TOW_TIME,DISTANCE,HA_SWEPT,
+         BEG_DEPTH,END_DEPTH,Mid.Lat.DD, Mid.Long.DD,Surface.Temp,Bottom.Temp) %>%
+  distinct(OP_ID, .keep_all = TRUE)
+
+###Add zeros to NUM for fish species that were not caught
+export.trawls.zeros.allspecies <- export.ns.os  %>%
+  select(OP_ID,SPECIES, NUM, NOHA, KGHA) 
+
+export.trawls.zeros.allspecies <-complete(export.trawls.zeros.allspecies, OP_ID, SPECIES, 
+                                          fill=list(NUM=0, NOHA=0, KGHA=0)) 
+
+export.tfish.trawls <- export.trawls.zeros.allspecies %>%
+  group_by(OP_ID) %>%
+  summarize(Tfish = sum(NUM))
+
+##get rid of trawls where SPECIES == 0 (NO FISH CAUGHT) and where fish were actually caught
+export.trawls.zeros.allspecies <- export.trawls.zeros.allspecies %>%
+  left_join(export.tfish.trawls) %>%
+#  subset(Tfish > 0 & SPECIES != 0 | Tfish == 0 & SPECIES == 0)  %>%
+  left_join(export.trawls) %>% 
+  left_join(sci.names) 
+
+export.Catch.Zeros <- export.trawls.zeros.allspecies %>%
+  select(OP_ID,survey,OP_DATE,TIME,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+         BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
+         DISTANCE,HA_SWEPT,SPECIES,COMMON_NAME,SCIENTIFIC_NAME,NUM,NOHA,KGHA) %>%
+  mutate(TRAWL_TYPE = "Bottom trawl")
+
+##If weights were NOT taken replace KGHA with 'na'
+export.Catch.Zeros$KGHA[export.Catch.Zeros$KGHA == 0 & export.Catch.Zeros$NUM >0] <- NA
+
+##Get rid of records where SPECIES == 0 and fish were caught in that trawl
+export.Catch.Zeros <- export.Catch.Zeros %>%
+  left_join(export.tfish.trawls) %>%
+  subset(SPECIES == 0 & Tfish ==0 | Tfish >0 & SPECIES !=0) %>%
+  select(OP_ID,survey,OP_DATE,TIME,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+         BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
+         DISTANCE,HA_SWEPT,SPECIES,COMMON_NAME,SCIENTIFIC_NAME,NUM,NOHA,KGHA,TRAWL_TYPE)
+
+##Calculate total number of species caught that year
+export.annual.total.fish <- export.trawls.zeros.allspecies %>% 
+  subset(NUM>0) %>%
+  group_by(YEAR, survey) %>%
+  distinct(SPECIES) %>%
+  summarise(fishes.total = n())
+
+##Sum KGHA and NOHA across all species to get total biomass and total number per ha
+export.trawls.sum<- export.ns.os %>%
+  select(OP_ID,NUM,NOHA,KGHA) %>%
+  group_by(OP_ID) %>%
+  summarise(KGHA = sum(KGHA), NUM=sum(NUM), NOHA = SUM(NOHA), Fishes = n()) %>%
+  left_join(export.trawls) %>% 
+  mutate(Fishes = replace(Fishes, NOHA == 0, 0))
+
+##calculate summary stats by year
+export.annual.sum <- export.trawls.sum %>% 
+  group_by(YEAR, survey) %>% 
+  summarise(locations=n(), 
+            mean.dist.km=mean(DISTANCE)*1.60934, median.dist.km = median(DISTANCE*1.60934), 
+            min.dist.km=min(DISTANCE)*1.60934, max.dist.km=max(DISTANCE)*1.60934,
+            mean.towtime=mean(TOW_TIME),  median.towtime=median(TOW_TIME), 
+            min.towtime=min(TOW_TIME), max.towtime=max(TOW_TIME),
+            median.begdepth=median(BEG_DEPTH), min.begdepth=min(BEG_DEPTH), max.begdepth=max(BEG_DEPTH),
+            median.enddepth=median(END_DEPTH), min.enddepth=min(END_DEPTH), max.enddepth=max(END_DEPTH),
+            mean.surface.temp=mean(Surface.Temp), min.surface.temp=min(Surface.Temp), max.surface.temp=max(Surface.Temp),
+            mean.bottom.temp=mean(Bottom.Temp), min.bottom.temp=min(Bottom.Temp), max.bottom.temp=max(Bottom.Temp),
+            mean.kg=mean(KGHA), median.kg = median(KGHA), sd.kg = sd(KGHA), 
+            std.error.kg = std.error(KGHA), skewness.kg=skewness(KGHA),
+            min.kg=min(KGHA), max.kg = max(KGHA),
+            mean.num=mean(NOHA), median.num = median(NOHA), sd.num = sd(NOHA), 
+            std.error.num = std.error(NOHA), skewness.num=skewness(NOHA),
+            sum.num=sum(NUM),
+            fishes.mean = mean(Fishes), fishes.median = median(Fishes), 
+            fishes.min = min(Fishes), fishes.max = max(Fishes)) %>%
+  left_join(export.annual.total.fish) %>%
+  ungroup()
+
+export.annual.zerofish <- export.trawls.sum %>%
+  subset(NUM == 0) %>%
+  group_by(YEAR, survey) %>% 
+  summarise(sites.zerofish=n()) %>%
+  ungroup() %>%
+  select(YEAR, survey, sites.zerofish) 
+
+export.annual.sum <- export.annual.sum %>%
+  left_join(export.annual.zerofish) 
+
+export.annual.sum$sites.zerofish[is.na(export.annual.sum$sites.zerofish)] <- 0 
+
+##calculate annual nearshore summary stats by station, year, and species
+export.annual.sum.by.species <- export.trawls.zeros.allspecies %>%
+  group_by(YEAR, SPECIES, survey) %>%
+  summarise(mean.kg = mean(KGHA), median.kg = median(KGHA), std.error.kg = std.error(KGHA), 
+            mean.num = mean(NOHA), median.num = median(NOHA), std.error.num = std.error(NOHA)) 
+
+##Add fish common names to file
+sci.names$SPECIES<-as.factor(sci.names$SPECIES)
+export.annual.sum.by.species <- export.annual.sum.by.species %>%
+  left_join(sci.names)
+
+##Nearshore Biomass Table for annual report
+export.annual.ns.species.sum <- export.trawls.zeros.allspecies %>%
+  select(OP_ID,YEAR,survey,SPECIES,COMMON_NAME, KGHA) %>%
+  subset(survey == 'nearshore') %>%
+  subset(SPECIES == 109 |
+           SPECIES == 202 |
+           SPECIES == 203 |
+           SPECIES == 204 |
+           SPECIES == 307 |
+           SPECIES == 317 |
+           SPECIES == 127 |
+           SPECIES == 902 |
+           SPECIES == 903 |
+           SPECIES == 904) %>%
+  group_by(YEAR,COMMON_NAME) %>% 
+  summarise(mean.kg=mean(KGHA)) %>%
+  pivot_wider(names_from = COMMON_NAME, values_from = mean.kg, values_fill = 0) %>%
+  ungroup()
+
+export.annual.ns.table <- export.annual.sum %>%
+  subset(survey == 'nearshore') %>%
+  left_join(export.annual.ns.species.sum) %>%
+select(YEAR, locations, sites.zerofish, mean.kg, median.kg, fishes.mean, fishes.total,
+         "Bloater", "Cisco", "Lake Whitefish", "Rainbow Smelt", 
+         "hatchery Lake Trout", "lean Lake Trout", "Burbot",
+         "Slimy Sculpin", "Spoonhead Sculpin", "Deepwater Sculpin") %>%
+  ungroup() %>%
+  mutate(all_sculpins = rowSums(.[15:17])) %>%
+  mutate(misc_species = mean.kg - rowSums(.[8:17])) 
+
+##Offshore annual Biomass summary Table for export
+export.annual.os.species.sum <- export.trawls.zeros.allspecies %>%
+  select(OP_ID,YEAR,survey,SPECIES,COMMON_NAME, KGHA) %>%
+  subset(survey == 'offshore') %>%
+  subset(SPECIES == 206 |
+           SPECIES == 308 |
+           SPECIES == 904) %>%
+  group_by(YEAR,COMMON_NAME) %>% 
+  summarise(mean.kg=mean(KGHA)) %>%
+  pivot_wider(names_from = COMMON_NAME, values_from = mean.kg) 
+
+export.annual.os.table <- export.annual.sum %>%
+  subset(survey == 'offshore') %>%
+  left_join(export.annual.os.species.sum) %>%
+  select(YEAR, locations, sites.zerofish, mean.kg, fishes.mean, fishes.total,
+         "Kiyi", "siscowet Lake Trout", "Deepwater Sculpin")
+
+
+##list of species caught and the number of individuals for a particular year, usually max(YEAR)
+export.annual.catch <- export.trawls.zeros.allspecies %>%
+  select(OP_ID, YEAR, survey, SPECIES, NUM) %>%
+  subset(YEAR == max(YEAR) & NUM >0) %>%
+  group_by(SPECIES,survey) %>% 
+  summarise(catch = sum(NUM)) %>% 
+  pivot_wider(names_from = survey, values_from = catch, values_fill = 0) %>%
+  ungroup() %>%
+  left_join(sci.names) %>%
+  select(COMMON_NAME,SCIENTIFIC_NAME, nearshore, offshore) 
+  
+  
+##### Age-1 abundance table ################################################################
+############################################################################################
+##Lengths file to evaluate Age-1 densities##################################################
+#sci.names$SPECIES<-as.numeric(sci.names$SPECIES)
+
+lengths<-read.csv(here('Data','LENGTHS_RVCAT.csv')) %>%
+  select(OP_ID,SPECIES,LENGTH,EXP_N) 
+
+lengths$SPECIES<-as.factor(lengths$SPECIES)
+
+export.age1.ns.os <- export.trawls %>%
+  full_join(lengths) %>% 
+  subset(SPECIES == '109' & LENGTH <101 & survey == "nearshore" |
+           SPECIES == '202' & LENGTH <141 & survey == "nearshore" |
+           SPECIES == '204' & LENGTH <131 & survey == "nearshore" |
+           SPECIES == '203' & LENGTH <161 & survey == "nearshore" |
+           SPECIES == '317' & LENGTH <226 & survey == "nearshore" |
+           SPECIES == '308' & LENGTH <226 & survey == "offshore" |
+           SPECIES == '206' & LENGTH <131 & survey == "offshore") %>%
+  select(OP_ID,SPECIES,EXP_N) %>%
+  group_by(OP_ID,SPECIES) %>%
+  summarise(NUM = sum(EXP_N)) %>%
+  ungroup()
+
+export.age1.zeros <-complete(export.age1.ns.os, OP_ID, SPECIES, 
+                                          fill=list(NUM=0))
+
+export.age1.complete <- export.trawls %>%
+  left_join(export.age1.zeros) %>%
+  mutate(NOHA=NUM/HA_SWEPT) 
+
+export.age1.table <- export.age1.complete %>% 
+  group_by(YEAR, survey, SPECIES) %>% 
+  summarise(age1.mean = mean(NOHA)) %>%
+  ungroup() %>%
+  select(YEAR, survey, SPECIES, age1.mean) %>%
+  subset(!is.na(SPECIES)) %>%
+  subset(SPECIES == '109' & survey == "nearshore" |
+           SPECIES == '202' & survey == "nearshore" |
+           SPECIES == '204' & survey == "nearshore" |
+           SPECIES == '203' & survey == "nearshore" |
+           SPECIES == '317' & survey == "nearshore" |
+           SPECIES == '308' & survey == "offshore" | 
+           SPECIES == '206' & survey == "offshore") %>%
+  select(YEAR, SPECIES, age1.mean) %>%
+  left_join(sci.names) %>%
+  mutate('Year class' = YEAR-1) %>%
+  select(YEAR, 'Year class', COMMON_NAME, age1.mean) %>%
+  pivot_wider(names_from = COMMON_NAME, values_from = age1.mean) %>%
+  round(1) 
+  
+
+##Export to Excel File
+library(openxlsx)
+metadata<-read.xlsx(here('Data','ns_os_all_MetaData.xlsx'))
+list.sheets<-list('Catch_NoZeros'=export.Catch.NoZeros, 
+                  'Catch_Zeros'= export.Catch.Zeros,
+                  'AnnualSummary'=export.annual.sum,
+                  'NS_table' = export.annual.ns.table, 
+                  'OS_table' = export.annual.os.table,
+                  'Age1_Fish' = export.age1.table, 
+                  'Catch_table' = export.annual.catch,
+                  'MetaData'= metadata)
+
+openxlsx::write.xlsx(list.sheets, here('Plots and Tables/RVCAT','export_ns_os_all.xlsx'))
+
+##############################################################################################
+##############################################################################################
+##############################################################################################
+
 ##pull out nearshore, TARGET = 2 data for a normal full survey year
+
 ns<-subset(all.data, TARGET==2 & YEAR >1977)
+
+##ns<-subset(all.data, TARGET==2 & YEAR >1973 &  M_UNIT == "WI2")
+
 
 ###If you want to compare data only from a partcular Managemen Unit or State do it now
 ## ns<-filter(all.data, TARGET == 2 & YEAR>1977 & STATE== 'MN')
@@ -362,8 +645,8 @@ ns.annual.sum <- ns.trawls.sum %>%
             std.error = std.error(KGHA), skewness=skewness(KGHA),
             fishes.mean = mean(Fishes), 
             fishes.min = min(Fishes), fishes.max = max(Fishes)) %>%
-  left_join(ns.annual.total.fish) 
-
+  left_join(ns.annual.total.fish) %>%
+  mutate(FCO = ifelse(mean <7, "No", "Yes"))
 
 ##############################################################################
 ##calculate annual nearshore summary stats by station, year, and species
@@ -462,8 +745,8 @@ ns.1985_1995mean<-subset(ns.annual.sum, YEAR >=1985 & YEAR <= 1995)
 ns.2000_2010mean<-subset(ns.annual.sum, YEAR >=2000 & YEAR <= 2010)
 
 
-###################################################################################
-###NEARSHORE DATA PLOTS####
+###############################################################################
+##Nearshore data plots
 ##turn on/off the geom_segment(...) lines to change which mean lines you want to show
 
 ggplot(ns.annual.sum, aes(x=YEAR, y=mean)) +
@@ -504,6 +787,29 @@ ggplot(ns.annual.sum, aes(x=YEAR, y=mean))+
 ##save plot to the folder you assigned as the working directory
 ggsave(here('Plots and Tables/RVCAT','ns_annual_totalbiomass_nomeans.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
+##lollpop with potential FCO 
+ns.annual.sum.2020 <- ns.annual.sum %>%
+  subset(YEAR <2020)
+
+ggplot(ns.annual.sum.2020, aes(x=YEAR, y=mean)) + 
+  aes(x=YEAR, y = mean, fill = FCO) + 
+  geom_hline(yintercept=7, size = 1.5, colour = 'sienna2') +
+  geom_point(shape = 21, size=6)+
+  geom_segment(aes(x=YEAR, xend=YEAR, y=0, yend=mean), size=1, color='black')+
+  scale_x_continuous(breaks = pretty_breaks())+
+  scale_y_continuous(breaks = pretty_breaks(5), 
+                     expand = expansion(mult = c(0, .1)))+
+  plot_theme+
+  scale_fill_manual(name='FCO\nMetric Met?', values=c('deeppink1','deepskyblue2'))+
+  theme(legend.box='horizontal',
+        legend.position = c(0.8, 0.8),
+        legend.title.align=0.5) +
+  labs(x='Year Class', y='Mean biomass (kg per ha)', caption=ann_data_access,
+       title='Lake Superior Total Fish Biomass',
+       subtitle='USGS bottom trawl assessment')
+ggsave(here('Plots and Tables/RVCAT','ns_totalbiomass_FCO.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+
 
 ##ns mean biomass with 10 year chunk means
 ggplot(ns.annual.sum, aes(x=YEAR, y=mean))+
@@ -517,6 +823,7 @@ ggplot(ns.annual.sum, aes(x=YEAR, y=mean))+
   geom_rect(xmin=max(ns.annual.sum$YEAR-10), xmax=max(ns.annual.sum$YEAR), 
             ymin=(mean(ns.10ymean$mean)-0.5), 
             ymax=(mean(ns.10ymean$mean)+0.5), fill='deeppink', alpha=0.03)+
+  geom_hline(yintercept=mean(ns.annual.sum$mean), size = 1.5, colour = 'sienna2') +
   scale_x_continuous(breaks = pretty_breaks()) +
   scale_y_continuous(expand=c(0,0)) +
   plot_theme+
@@ -1280,7 +1587,7 @@ all.sites.current<-all.data %>%
   select(OP_ID,OP_DATE,YEAR,TARGET,LOCATION, BEG_LONGITUDE_DD, END_LONGITUDE_DD, 
          BEG_LATITUDE_DD, END_LATITUDE_DD, Mid.Lat.DD, Mid.Long.DD, 
          BEG_DEPTH, END_DEPTH,Surface.Temp, Bottom.Temp) %>%
-  filter(YEAR==max(YEAR)-1) %>% 
+  filter(YEAR==max(YEAR)) %>% 
   filter(TARGET==2|TARGET==117|TARGET==118|TARGET==106) %>%
   distinct(OP_ID, .keep_all = TRUE) %>%
   mutate(survey = str_replace_all(TARGET, c("2" = "nearshore", "117" = "offshore", 
@@ -1294,8 +1601,10 @@ ggplot(all.sites.current, aes(Mid.Long.DD, Mid.Lat.DD)) +
                      labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
   geom_point(all.sites.current, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=survey), size=6, stroke=1.5)+
-  scale_color_manual(values=c('salmon','cadetblue2', 'palegreen3'), 
-                     name='Survey', labels=c('Chequamegon Bay','Nearshore','Offshore'))+
+  scale_color_manual(values=c('salmon','cadetblue2'), 
+                     #scale_color_manual(values=c('salmon','cadetblue2', 'palegreen3'), 
+                                        name='Survey', labels=c('Nearshore','Offshore'))+
+#  name='Survey', labels=c('Chequamegon Bay','Nearshore','Offshore'))+
   map_theme+
   geom_text(aes(label=LOCATION))+
   labs(caption=ann_data_access,
@@ -1580,11 +1889,11 @@ ls_poly.fort <- fortify(ls_poly)
 
 
 ##Biomass pie map for bloater, cisco, kiyi for current year
-ggplot(subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR-5))) +
+ggplot(subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR))) +
   aes(Mid.Long.DD, Mid.Lat.DD) +
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ 
   geom_scatterpie(aes(x=Mid.Long.DD, y=Mid.Lat.DD), 
-                  data=subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR-5)),
+                  data=subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR)),
                   cols= c("Bloater", "Cisco", "Kiyi"),
                   pie_scale = 0.75) +
   theme_bw() +
@@ -1595,7 +1904,7 @@ ggplot(subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR-5))) +
         legend.text=element_text(size=16, family='serif')) +
   labs(x='Longitude', y='Latitude',
        title='Lake Superior Ciscoe Distributions',
-       subtitle=(paste('USGS bottom trawl assessment,', max(ns.os.pies$YEAR-5))), 
+       subtitle=(paste('USGS bottom trawl assessment,', max(ns.os.pies$YEAR))), 
        caption=ann_data_access)
 
 ggsave(here('Plots and Tables/RVCAT','CurrentYear_ciscoe_piemap.png'), 
@@ -1697,11 +2006,11 @@ anim_save(here('Plots and Tables/RVCAT','Animated_whitefish_pies.gif'))
 ###############################################################################
 ###Sculpins - Slimy, Spoonhead, Deep
 
-ggplot(subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR-5))) +
+ggplot(subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR))) +
   aes(Mid.Long.DD, Mid.Lat.DD) +
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ 
   geom_scatterpie(aes(x=Mid.Long.DD, y=Mid.Lat.DD), 
-                  data=subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR-5)),
+                  data=subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR)),
                   cols= c("Slimy Sculpin", "Spoonhead Sculpin", "Deepwater Sculpin"),
                   pie_scale = 0.75) +
   theme_bw() +
@@ -1712,7 +2021,7 @@ ggplot(subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR-5))) +
         legend.text=element_text(size=16, family='serif')) +
   labs(x='Longitude', y='Latitude',
        title='Lake Superior Sculpin Distributions',
-       subtitle=(paste('USGS bottom trawl assessment,', max(ns.os.pies$YEAR-5))), 
+       subtitle=(paste('USGS bottom trawl assessment,', max(ns.os.pies$YEAR))), 
        caption=ann_data_access)
 
 ggsave(here('Plots and Tables/RVCAT','CurrentYear_sculpin_piemap.png'), 
@@ -1752,11 +2061,11 @@ anim_save(here('Plots and Tables/RVCAT','Animated_sculpin_pies.gif'))
 #########################################################################
 ###Lake trout - lean and siscowet
 
-ggplot(subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR-5))) +
+ggplot(subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR))) +
   aes(Mid.Long.DD, Mid.Lat.DD) +
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ 
   geom_scatterpie(aes(x=Mid.Long.DD, y=Mid.Lat.DD), 
-                  data=subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR-5)),
+                  data=subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR)),
                   cols= c("lean Lake Trout", "siscowet Lake Trout"),
                   pie_scale = 0.75) +
   theme_bw() +
@@ -1767,7 +2076,7 @@ ggplot(subset(ns.os.pies, YEAR == max(ns.os.pies$YEAR-5))) +
         legend.text=element_text(size=16, family='serif')) +
   labs(x='Longitude', y='Latitude',
        title='Lake Superior Lake Trout Distributions',
-       subtitle=(paste('USGS bottom trawl assessment,', max(ns.os.pies$YEAR-5))), 
+       subtitle=(paste('USGS bottom trawl assessment,', max(ns.os.pies$YEAR))), 
        caption=ann_data_access)
 
 ggsave(here('Plots and Tables/RVCAT','CurrentYear_laketrout_piemap.png'), 
@@ -1814,7 +2123,7 @@ sp_map1<-ggplot(subset(ns.os.species.maps,
   map_theme +
   theme(legend.box='horizontal')+
   guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
-  labs(title='Lake Superior Cisco Biomass',subtitle='USGS bottom trawl assessment',
+  labs(title='Lake Superior Cisco Biomss',subtitle='USGS bottom trawl assessment',
        caption=ann_data_access)+
   transition_manual(YEAR)
 
@@ -1826,7 +2135,7 @@ sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000,
                      height = 500,renderer = gifski_renderer(loop=F))
 sp_map1_gif
 
-anim_save(here('Plots and Tables/RVCAT','Animated_Bloater_station_biomass.gif'))
+anim_save(here('Plots and Tables/RVCAT','Animated_Cisco_station_biomass.gif'))
 
 
 sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
@@ -2050,42 +2359,7 @@ for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames t
 new_gif
 image_write(new_gif, here('Plots and Tables/RVCAT','Animated_PWF_ann_biomass_map_bars.gif'))
 
-
-
-###########################################################################################
-###########################################################################################
-###########################################################################################
-##Animated figure showing species specific biomass through time
-biomass.pie.map1<-ggplot(ns.os.all.trawls, aes(Mid.Long.DD, Mid.Lat.DD)) +
-  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ 
-  geom_point(aes(x=Mid.Long.DD, y=Mid.Lat.DD), 
-                  data=ns.os.all.trawls,
-                  cols= c("Bloater", "Cisco", "Kiyi", "Lake Whitefish", "Pygmy Whitefish"),
-                  pie_scale = 0.75) +
-  theme_bw() +
-  map_theme +
-  scale_fill_brewer(palette="Accent") +
-  theme(legend.title = element_blank(),
-        legend.position = c(.1, .85),
-        legend.text=element_text(size=16, family='serif')) +
-  labs(x='Longitude', y='Latitude',
-       title='Lake Superior Whitefish Distributions',
-       subtitle='USGS bottom trawl assessment', 
-       caption=ann_data_access)
-
-transition_manual(YEAR)
-
-biomass.pie.map2<-biomass.pie.map1+geom_text(aes(x=-85, y=48.75, 
-                                                 label=paste('Year:', YEAR, sep='\n')), 
-                                             size=8, family='serif') +
-  transition_manual(YEAR)
-
-a1p_gif<-animate(biomass.pie.map2, fps = .5, end_pause = 15, nframes=57, ##NOTE: as more years are added, need to increase nframes to the # years
-                 width = 900, height = 500, renderer = gifski_renderer(loop=T))
-a1p_gif
-anim_save(here('Plots and Tables/RVCAT','Animated_whitefish_pies.gif')) 
-
-###############################################################################
+##############################################################################
 ############################################################################
 ##Chequamegon Bay#############################################Cheq Bay#####
 ######################################################################################################
@@ -2285,6 +2559,11 @@ image_write(new_gif, here('Plots and Tables/RVCAT','Animated_cbay_ann_biomass_ma
 ############################################################################################
 
 ##Lengths file to evaluate Age-1 densities##################################################
+##pull out nearshore, TARGET = 2 data for a normal full survey year
+
+ns<-subset(all.data, TARGET==2 & YEAR >1977)
+
+##ns<-subset(all.data, TARGET==2 & YEAR >1973 &  M_UNIT == "WI2")
 
 lengths<-read.csv(here('Data','LENGTHS_RVCAT.csv')) %>%
   select(OP_ID,SPECIES,LENGTH,EXP_N) 
@@ -2354,7 +2633,10 @@ age1.annual.sum <- age1 %>%
   group_by(YEAR, TARGET, COMMON_NAME) %>% 
   summarise(age1.mean = mean(NOHA)) %>%
   ungroup() %>%
-  select(YEAR,COMMON_NAME, age1.mean)
+  select(YEAR,COMMON_NAME, age1.mean) %>%
+  mutate(FCO = ifelse(COMMON_NAME == 'Lake Whitefish' & age1.mean <4.5, "No",
+                      ifelse(COMMON_NAME == 'Bloater' & age1.mean <10, "No", 
+                      ifelse(COMMON_NAME == 'Cisco' & age1.mean <10, "No", "Yes"))))
 
 
 #####################################################################################################
@@ -2375,6 +2657,9 @@ write.xlsx(age1.table, here('Plots and Tables/RVCAT','export_age1_annual_summary
 
 ##plot of recent age-1 ciscoe densities
 #################################################################################################
+age1.annual.sum.2020 <- age1.annual.sum %>%
+  subset(YEAR<2020)
+
 
 ggplot(subset(age1.annual.sum, COMMON_NAME=='Bloater'|COMMON_NAME=='Cisco'|COMMON_NAME=='Kiyi')) + 
   aes(x=YEAR-1, y = age1.mean) + 
@@ -2397,18 +2682,25 @@ ggsave(here('Plots and Tables/RVCAT','ns_os_Age1_ciscoes.png'), dpi = 300, width
 
 ##Plot of age-1 Cisco
 
-ggplot(subset(age1.annual.sum, COMMON_NAME == "Cisco")) + 
-  aes(x=YEAR-1, y = age1.mean) + 
-  geom_point(size=6)+
+ggplot(subset(age1.annual.sum.2020, COMMON_NAME == "Cisco")) + 
+  aes(x=YEAR-1, y = age1.mean, fill = FCO) + 
+  geom_hline(yintercept=0, size = 1, colour = 'black') +
+  geom_hline(yintercept=10, size = 1.5, colour = 'sienna2') +
+  geom_point(shape = 21, size=6)+
   geom_segment(aes(x=YEAR-1, xend=YEAR-1, y=0, yend=age1.mean), size=1, color='black')+
+  geom_hline(yintercept=100, size = 1.5, colour = 'sienna2') +
   scale_x_continuous(breaks = pretty_breaks())+
   scale_y_continuous(breaks = pretty_breaks(5), 
-                     expand = expansion(mult = c(0, .1)))+
+                     expand = expansion(mult = c(0.05, .1)))+
   plot_theme+
+  scale_fill_manual(name='FCO\nMetric Met?', values=c('deeppink1','deepskyblue2'))+
+  theme(legend.box='horizontal',
+        legend.position = c(0.8, 0.8),
+        legend.title.align=0.5) +
   labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
      title='Lake Superior Age-1 Cisco Abundance',
-     subtitle='USGS bottom trawl assessment') 
-  
+     subtitle='USGS bottom trawl assessment')
+
 ggsave(here('Plots and Tables/RVCAT','ns_Age1_cisco.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
 
@@ -2417,33 +2709,43 @@ ggsave(here('Plots and Tables/RVCAT','ns_Age1_cisco.png'), dpi = 300, width = 40
 ##Plot of age-1 Bloater
 
 ggplot(subset(age1.annual.sum, COMMON_NAME == "Bloater")) + 
-  aes(x=YEAR-1, y = age1.mean) + 
-  geom_point(size=6)+
+  aes(x=YEAR-1, y = age1.mean, fill = FCO) + 
+  geom_point(shape = 21, size=6)+
   geom_segment(aes(x=YEAR-1, xend=YEAR-1, y=0, yend=age1.mean), size=1, color='black')+
+  geom_hline(yintercept=10, size = 1.5, colour = 'sienna2') +
   scale_x_continuous(breaks = pretty_breaks())+
   scale_y_continuous(breaks = pretty_breaks(5), 
                      expand = expansion(mult = c(0, .1)))+
   plot_theme+
+  scale_fill_manual(name='FCO\nMetric Met?', values=c('deeppink1','deepskyblue2'))+
+  theme(legend.box='horizontal',
+        legend.position = c(0.8, 0.8), 
+        legend.title.align=0.5) +
   labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
        title='Lake Superior Age-1 Bloater Abundance',
-       subtitle='USGS bottom trawl assessment') 
+       subtitle='USGS bottom trawl assessment')
 
 ggsave(here('Plots and Tables/RVCAT','ns_age1_bloater.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
 #################################################################################################
 ##Plot of age-1 Lake Whitefish
 
-ggplot(subset(age1.annual.sum, COMMON_NAME == "Lake Whitefish")) + 
-  aes(x=YEAR-1, y = age1.mean) + 
-  geom_point(size=6)+
+ggplot(subset(age1.annual.sum.2020, COMMON_NAME == "Lake Whitefish")) + 
+  aes(x=YEAR-1, y = age1.mean, fill = FCO) + 
+  geom_hline(yintercept=4.5, size = 1.5, colour = 'sienna2') +
+  geom_point(shape = 21, size=6)+
   geom_segment(aes(x=YEAR-1, xend=YEAR-1, y=0, yend=age1.mean), size=1, color='black')+
   scale_x_continuous(breaks = pretty_breaks())+
   scale_y_continuous(breaks = pretty_breaks(5), 
                      expand = expansion(mult = c(0, .1)))+
   plot_theme+
+  scale_fill_manual(name='FCO\nMetric Met?', values=c('deeppink1','deepskyblue2'))+
+  theme(legend.box='horizontal',
+        legend.position = c(0.8, 0.8), 
+        legend.title.align=0.5) +
   labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
        title='Lake Superior Age-1 Lake Whitefish Abundance',
-       subtitle='USGS bottom trawl assessment') 
+       subtitle='USGS bottom trawl assessment')
 
 ggsave(here('Plots and Tables/RVCAT','ns_age1_lwf.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
@@ -2473,7 +2775,6 @@ ggsave(here('Plots and Tables/RVCAT','ns_os_age1_laketrout.png'), dpi = 300, wid
 #################################################################################################
 #################################################################################################
 ##map of age-1 cisco and bloater densities
-##animated plot of nearshore biomass at each station across years-----------
 
 ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "lake_superior")
 ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
@@ -2610,26 +2911,29 @@ a1.map.inset<-ggplot(subset(age1.pa,
 
 ####stacked bar plot for age-1 bloater, ciscoe, kiyi
 ggplot(subset(age1.pa, 
-              COMMON_NAME=='Cisco' & YEAR == max(age1$YEAR-1) |
-              COMMON_NAME=='Bloater' & YEAR == max(age1$YEAR-1) |
-              COMMON_NAME=='Kiyi' & YEAR == max(age1$YEAR-1)
+              COMMON_NAME=='Cisco' & YEAR == max(age1$YEAR) |
+              COMMON_NAME=='Bloater' & YEAR == max(age1$YEAR) |
+              COMMON_NAME=='Kiyi' & YEAR == max(age1$YEAR) |
+              COMMON_NAME=='Lake Whitefish' & YEAR == max(age1$YEAR)   
               )) +
-  aes(x=LOCATION, y = NOHA, fill=COMMON_NAME) + 
+  aes(x=reorder(LOCATION, NOHA), y = NOHA, fill=COMMON_NAME) + 
+#  aes(x=LOCATION, y = NOHA, fill=COMMON_NAME) + 
   geom_bar(stat='identity', position='stack')+
-  aes(x=fct_reorder(station, OP_DATE))+
+##  aes(x=fct_reorder(station))+
 ## annotation_custom(ggplotGrob(a1.map.inset), xmin=20, xmax=100, ymin=35, ymax=240)+
   plot_theme+
   theme(legend.position='bottom',
         axis.text.x=element_text(angle=90, hjust=1, vjust=0.5, size=12))+
-  labs(x='Station, ordered by sampling date', 
+  labs(x='Station', 
        y='Abundance (number per ha)',
        title='Lake Superior Age-1 Ciscoe Occurrence',
-       subtitle=(paste('USGS bottom trawl assessment,', max(age1.pa$YEAR-1))), 
+       subtitle=(paste('USGS bottom trawl assessment,', max(age1.pa$YEAR))), 
        caption=ann_data_access) +
   scale_y_continuous(breaks = pretty_breaks(5), 
                      expand = expansion(mult = c(0, .1)))+
-  scale_fill_manual(values=c('darkorchid4','turquoise','darkorange1'), name=' ') +
-  theme(legend.position = c(0.8,0.8))
+  scale_fill_manual( name=' ', values=c('palegreen3','sienna1', 'deepskyblue2', 'lightpink3'))+
+  theme(legend.position = "none")
+#  theme(legend.position = c(0.8,0.8))
 
 ggsave(here('Plots and Tables/RVCAT','ns_age1_ciscoes_bydate.png'), height=20, width=40, dpi=300, units='cm')
 
@@ -2641,7 +2945,10 @@ ggsave(here('Plots and Tables/RVCAT','ns_age1_ciscoes_bydate.png'), height=20, w
 age1.pie <- age1 %>%
   select(OP_ID,YEAR,LOCATION,COMMON_NAME,NOHA,Mid.Lat.DD, Mid.Long.DD) %>%
   pivot_wider(names_from = COMMON_NAME, values_from = NOHA, values_fill = 0) %>%
-  subset(Mid.Lat.DD >0)
+  subset(Mid.Lat.DD >0) 
+
+##%>%
+  ##subset(YEAR>1988)
 
 ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "lake_superior")
 ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
@@ -2649,22 +2956,25 @@ ls_poly.fort <- fortify(ls_poly)
 
 
 ##Age-1 pie map for bloater, cisco, kiyi for current year
-ggplot(subset(age1.pie, YEAR == max(age1.pie$YEAR-5))) +
+ggplot(subset(age1.pie, YEAR == max(age1.pie$YEAR))) +
   aes(Mid.Long.DD, Mid.Lat.DD) +
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ 
+  scale_x_continuous(breaks = pretty_breaks(), limits = c(-91.2, -90.2), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), limits = c(46.5, 47.2), name="Latitude")+
   geom_scatterpie(aes(x=Mid.Long.DD, y=Mid.Lat.DD), 
-                  data=subset(age1.pie, YEAR == max(age1.pie$YEAR-5)),
-                  cols= c("Bloater", "Cisco", "Kiyi"),
+                  data=subset(age1.pie, YEAR == max(age1.pie$YEAR)),
+                  cols= c("Bloater", "Cisco", "Kiyi", 'Lake Whitefish'),
                   pie_scale = 0.75) +
   theme_bw() +
   map_theme +
-  scale_fill_brewer(palette="Accent") +
+  scale_fill_manual( name=' ', values=c('palegreen3','sienna1', 'deepskyblue2', 'lightpink3'))+
+#  scale_fill_brewer(palette="Accent") +
   theme(legend.title = element_blank(),
         legend.position = c(.1, .85),
         legend.text=element_text(size=16, family='serif')) +
   labs(x='Longitude', y='Latitude',
         title='Lake Superior Age-1 Ciscoe Distributions',
-        subtitle=(paste('USGS bottom trawl assessment,', max(age1.pa$YEAR-5))), 
+        subtitle=(paste('USGS bottom trawl assessment,', max(age1.pa$YEAR))), 
         caption=ann_data_access)
 
 ggsave(here('Plots and Tables/RVCAT','CurrentYear_age1_piemap.png'), 
@@ -2812,175 +3122,290 @@ ggplot(ns.period.means, aes(x=percentchange, y=COMMON_NAME, fill=direction))+
 
 ggsave(here('Plots and Tables/RVCAT','ns_periods_comparison.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
-####################################################################################
-###########################################################################################
-###########################################################################################
-##DATA EXPORT NEARSHORE AND OFFSHORE DATA ALL SPECIES, YEARS, SITES
-###########################################################################################
-##############################################################################
-sci.names$SPECIES<-as.factor(sci.names$SPECIES)
 
-export.ns.os <- all.data %>%
-  select(OP_ID,OP_DATE,YEAR,TIME,TARGET,TR_DESIGN,LOCATION,Mid.Lat.DD,Mid.Long.DD,
-         BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
-         DISTANCE,HA_SWEPT,SPECIES,NUM,NOHA,KGHA) %>%
-  subset(YEAR >= 1978) %>% 
-  subset(TARGET==2 | TARGET==118 | TARGET==117 & YEAR>2010 & END_DEPTH>84) %>% 
-  subset(TR_DESIGN==25 | TR_DESIGN==4) %>%
+########################################################################################
+##Animated map of sites sampled in the current year and corresponding fish biomass and diversity#####################################
+########################################################################################
+
+animate.map.catch <- all.data%>%
+##  subset(YEAR >=2009) %>%
+  subset(YEAR==max(YEAR-1)) %>%
+  subset(TARGET==2|TARGET==117|TARGET==118) %>%
+         #|TARGET ==106) %>%
+  select(OP_ID, OP_DATE, TIME, YEAR, TARGET, LOCATION, Mid.Long.DD, Mid.Lat.DD, SPECIES, NUM, WT, NOHA, KGHA) %>%
+  arrange(OP_DATE, TIME)
+
+animate.map.species <-animate.map.catch[match(unique(animate.map.catch$SPECIES), animate.map.catch$SPECIES),]
+animate.map.species <-aggregate(animate.map.species$SPECIES, by=list(OP_ID=animate.map.species$OP_ID), FUN=length)%>%
+  renameCol('x','New.Spp') 
+
+animate.map.catch.sum <- animate.map.catch %>%
+  group_by(OP_ID) %>%
+  mutate(Catch_spp = n(), 
+         Catch.num = sum(NUM), 
+         Catch.wt = sum(WT), 
+         Catch.NOHA = sum(NOHA), 
+         Catch.KGHA = sum(KGHA)) %>%
+  ungroup() %>%
+  distinct(OP_ID, .keep_all = TRUE) %>%
+  arrange(OP_DATE, TIME) %>%
+  left_join(animate.map.species) 
+
+animate.map.catch.sum$New.Spp[is.na(animate.map.catch.sum$New.Spp)] <- 0 
+  
+animate.map.catch.sum <- animate.map.catch.sum %>%
+  mutate(cumCatch.spp = cumsum(lag(New.Spp,  default = 0)),
+         cumCatch.num = cumsum(lag(Catch.num, default = 0)),
+         cumCatch.wt = cumsum(lag(Catch.wt,  default = 0))) %>% 
+  mutate(Order = 1:nrow(animate.map.catch.sum)) %>%
   mutate(survey = str_replace_all(TARGET, c("2" = "nearshore", "117" = "offshore", 
-                                            "118" = "offshore"))) %>%
-  left_join(sci.names)
-
-export.Catch.NoZeros <- export.ns.os %>%
-  select(OP_ID,survey,OP_DATE,TIME,LOCATION,Mid.Lat.DD,Mid.Long.DD,
-         BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
-         DISTANCE,HA_SWEPT,SPECIES,COMMON_NAME,SCIENTIFIC_NAME,NUM,NOHA,KGHA) %>%
-  mutate(TRAWL_TYPE = "Bottom trawl")
-
-##Pull out all individual trawls
-export.trawls<-export.ns.os  %>%
-  select(OP_ID,OP_DATE,TIME,survey, YEAR,LOCATION,TOW_TIME,DISTANCE,HA_SWEPT,
-         BEG_DEPTH,END_DEPTH,Mid.Lat.DD, Mid.Long.DD,Surface.Temp,Bottom.Temp) %>%
-  distinct(OP_ID, .keep_all = TRUE)
-
-###Add zeros to NUM for fish species that were not caught
-export.trawls.zeros.allspecies <- export.ns.os  %>%
-  select(OP_ID,SPECIES,NUM, NOHA, KGHA) 
-
-export.trawls.zeros.allspecies <-complete(export.trawls.zeros.allspecies, OP_ID, SPECIES, 
-                                     fill=list(NUM=0, NOHA=0, KGHA=0)) 
-
-export.tfish.trawls <- export.trawls.zeros.allspecies %>%
-  group_by(OP_ID) %>%
-  summarize(Tfish = sum(NUM))
-
-##get rid of trawls where SPECIES == 0 (NO FISH CAUGHT) and where fish were actually caught
-export.trawls.zeros.allspecies <- export.trawls.zeros.allspecies %>%
-  left_join(export.tfish.trawls) %>%
-  subset(Tfish > 0 & SPECIES != 0 | Tfish == 0 & SPECIES == 0)  %>%
-  left_join(export.trawls) %>% 
-  left_join(sci.names) 
-
-export.Catch.Zeros <- export.trawls.zeros.allspecies %>%
-  select(OP_ID,survey,OP_DATE,TIME,LOCATION,Mid.Lat.DD,Mid.Long.DD,
-         BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
-         DISTANCE,HA_SWEPT,SPECIES,COMMON_NAME,SCIENTIFIC_NAME,NUM,NOHA,KGHA) %>%
-  mutate(TRAWL_TYPE = "Bottom trawl")
+                                          "118" = "offshore", "106" = "Chequamegon Bay"))) %>%
+  mutate(Fish.Caught = 'Fish Caught')
 
 
-##Calculate total number of species caught that year
-export.annual.total.fish <- export.trawls.zeros.allspecies %>% 
-  subset(NUM>0) %>%
-  group_by(YEAR, survey) %>%
-  distinct(SPECIES) %>%
-  summarise(fishes.total = n())
 
-##Sum KGHA and NOHA across all species to get total biomass and total number per ha
-export.trawls.sum<- export.ns.os %>%
-  select(OP_ID,NOHA,KGHA) %>%
-  group_by(OP_ID) %>%
-  summarise(KGHA = sum(KGHA), NOHA = SUM(NOHA), Fishes = n()) %>%
-  left_join(export.trawls) %>% 
-  mutate(Fishes = replace(Fishes, NOHA == 0, 0))
+ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "lake_superior")
+ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
+ls_poly.fort <- fortify(ls_poly)
 
-##calculate summary stats by year
-export.annual.sum <- export.trawls.sum %>% 
-  group_by(YEAR, survey) %>% 
-  summarise(locations=n(), 
-            mean.dist.km=mean(DISTANCE)*1.60934, min.dist.km=min(DISTANCE)*1.60934,
-            max.dist.km=max(DISTANCE)*1.60934,
-            mean.towtime=mean(TOW_TIME), min.towtime=min(TOW_TIME), max.towtime=max(TOW_TIME),
-            min.begdepth=min(BEG_DEPTH), max.begdepth=max(BEG_DEPTH),
-            min.enddepth=min(END_DEPTH), max.enddepth=max(END_DEPTH),
-            mean.surface.temp=mean(Surface.Temp), min.surface.temp=min(Surface.Temp), max.surface.temp=max(Surface.Temp),
-            mean.bottom.temp=mean(Bottom.Temp), min.bottom.temp=min(Bottom.Temp), max.bottom.temp=max(Bottom.Temp),
-            mean.kg=mean(KGHA), median.kg = median(KGHA), sd.kg = sd(KGHA), 
-            std.error.kg = std.error(KGHA), skewness.kg=skewness(KGHA),
-            mean.num=mean(NOHA), median.num = median(NOHA), sd.num = sd(NOHA), 
-            std.error.num = std.error(NOHA), skewness.num=skewness(NOHA),
-            fishes.mean = mean(Fishes), 
-            fishes.min = min(Fishes), fishes.max = max(Fishes)) %>%
-  left_join(export.annual.total.fish)
+p<-ggplot(animate.map.catch.sum, aes(Mid.Long.DD, Mid.Lat.DD)) +
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ ##path for lake outline
+  geom_path(data=animate.map.catch.sum, mapping=aes(Mid.Long.DD, Mid.Lat.DD), size=1)+ ##path for lines connecting sites
+  geom_point(aes(group=seq_along(Order), color=survey), size=6, alpha=0.6)+ 
+  theme_bw() + 
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  map_theme +
+#  scale_color_viridis(discrete=T, labels=c('Chequamegon Bay', 'Nearshore Cruise', 'Offshore Cruise'), 
+  scale_color_viridis(discrete=T, labels=c('Nearshore Cruise', 'Offshore Cruise'), 
+                      name='', begin=0,end=0.6, alpha = 0.6) +
+  labs(title='Lake Superior Fish Collections',
+       subtitle=(paste('USGS bottom trawl assessment,', max(animate.map.catch.sum$YEAR))), 
+##       subtitle='USGS bottom trawl assessment, 2009-2020', 
+       caption=ann_data_access)+ ##change title to current year
+  transition_reveal(Order)+
+  theme(legend.position=c(0.1,0.9),
+        legend.title = element_blank())
 
-##calculate annual nearshore summary stats by station, year, and species
-export.annual.sum.by.species <- export.trawls.zeros.allspecies %>%
-  group_by(YEAR, SPECIES, survey) %>%
-  summarise(mean.kg = mean(KGHA), median.kg = median(KGHA), std.error.kg = std.error(KGHA), 
-            mean.num = mean(NOHA), median.num = median(NOHA), std.error.num = std.error(NOHA)) 
+r<-p+geom_text(aes(x=-85, y=49, label=OP_DATE), size=8, family='serif')+
+  transition_reveal(Order)
 
-##Add fish common names to file
-sci.names$SPECIES<-as.factor(sci.names$SPECIES)
-export.annual.sum.by.species <- export.annual.sum.by.species %>%
-  left_join(sci.names)
+p_gif<-animate(r, fps = 5, end_pause = 60, nframes=150, 
+               width = 1000, height = 500, renderer = gifski_renderer(loop=T))
 
-##Nearshore Biomass Table for annual report
-export.annual.ns.species.sum <- export.trawls.zeros.allspecies %>%
-  select(OP_ID,YEAR,survey,SPECIES,COMMON_NAME, KGHA) %>%
+anim_save(here('Plots and Tables/RVCAT','Animated_CurrentYear_map.gif')) ##saves just map, before adding other plots
+
+
+##########################################################################
+## Cummulative number of individuals collected
+
+anim_bar1 <- ggplot(data=animate.map.catch.sum) +
+  geom_tile(aes(x = Fish.Caught, y = (cumCatch.num + Catch.num/2),
+            height = Catch.num,
+            fill = survey), width = 0.9) +
+  scale_fill_viridis(discrete=T, begin = 0,end = 0.6, alpha = 0.6)+
+  scale_y_continuous(labels = scales::comma, 
+                     expand=c(0,0), 
+                     breaks = pretty_breaks(5)) +
+  scale_x_discrete(expand=c(0,0), labels=c('Fish\nCaught'))+
+  theme(legend.position = "none")+
+  plot_theme+
+  labs(x='',y='Running total: fish caught',title=' ')+
+  transition_time(Order)+
+  shadow_mark(past=T, future=F)
+
+#animate(anim_bar, fps = 20)
+q_gif<-animate(anim_bar1, fps = 5, end_pause = 60, nframes=150, 
+               width = 200, height = 500, renderer = gifski_renderer(loop=T))  
+
+##anim_save(here('Plots and Tables/RVCAT','Animated_CurrentYear_CatchPlot.gif')) ##saves just map, before adding other plots
+
+q_gif
+
+##########################################################################
+## Cummulative number of new species collected
+
+anim_bar2 <- ggplot(data=animate.map.catch.sum) +
+  geom_tile(aes(x = Fish.Caught, y = (cumCatch.spp + New.Spp/2),
+                height = New.Spp,
+                fill = survey), width = 0.9) +
+  scale_fill_viridis(discrete=T, begin = 0,end = 0.6, alpha = 0.6)+
+  scale_y_continuous(expand=c(0,0), 
+                     breaks = pretty_breaks(5)) +
+  scale_x_discrete(expand=c(0,0), labels=c('Species\nCaught'))+
+  theme(legend.position = "none")+
+  plot_theme+
+  labs(x='',y='Running total: unique species caught',title=' ')+
+  transition_time(Order)+
+  shadow_mark(past=T, future=F)
+
+
+#animate(anim_bar, fps = 20)
+u_gif<-animate(anim_bar2, fps = 5, end_pause = 60, nframes=150, 
+               width = 150, height = 500, renderer = gifski_renderer(loop=T)) 
+
+##anim_save(here('Plots and Tables/RVCAT','Animated_CurrentYear_SpeciesPlot.gif')) ##saves just map, before adding other plots
+
+u_mgif<-image_read(u_gif)
+p_mgif<-image_read(p_gif)
+q_mgif<-image_read(q_gif)
+
+new_gif<-image_append(c(p_mgif[1], q_mgif[1], u_mgif[1]))
+for(i in 2:100){
+  combined <- image_append(c(p_mgif[i], q_mgif[i], u_mgif[i]))
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+image_write(new_gif,here('Plots and Tables/RVCAT','Animated_CurrentYear_Catch_map.gif'))
+
+
+############################################################################################
+##animate bar plots of cumulative annual mean biomass for nearshore and offshore cruises----
+animate.map.catch.sum.ns <- animate.map.catch.sum %>%
   subset(survey == 'nearshore') %>%
-  subset(SPECIES == 109 |
-           SPECIES == 202 |
-           SPECIES == 203 |
-           SPECIES == 204 |
-           SPECIES == 307 |
-           SPECIES == 317 |
-           SPECIES == 127 |
-           SPECIES == 902 |
-           SPECIES == 903 |
-           SPECIES == 904) %>%
-  group_by(YEAR,COMMON_NAME) %>% 
-  summarise(mean.kg=mean(KGHA)) %>%
-  pivot_wider(names_from = COMMON_NAME, values_from = mean.kg, values_fill = 0)
+  arrange(OP_DATE, TIME) %>%
+  mutate(cummean.KGHA = cummean(Catch.KGHA))
 
+animate.map.catch.sum.os <- animate.map.catch.sum %>%
+  subset(survey == 'offshore') %>%
+  arrange(OP_DATE, TIME) %>%
+  mutate(cummean.KGHA = cummean(Catch.KGHA))
 
-export.annual.ns.table <- export.annual.sum %>%
+animate.map.catch.mean <- animate.map.catch.sum.ns %>%
+  bind_rows(animate.map.catch.sum.os) %>%
+  mutate(Order2 = Order)
+
+r<-ggplot(animate.map.catch.mean, aes(x = survey, y = cummean.KGHA)) +
+  geom_jitter(data=animate.map.catch.mean, aes(x=survey, y= Catch.KGHA), 
+            fill = 'black', shape = 21, size = 8) +
+  geom_tile(data = animate.map.catch.mean, aes(y = cummean.KGHA / 2, height = cummean.KGHA, 
+            fill=survey), 
+            width = 0.9, alpha = 0.6) +
+  scale_fill_viridis(discrete=T, begin=0,end=0.6, alpha =0.6)+
+  theme(legend.position = "none")+
+  plot_theme+
+  scale_x_discrete(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0), 
+                     breaks = pretty_breaks()) +
+  labs( x='', y='Lakewide mean biomass (kg per ha)', title='  ', caption='  ') +
+  transition_reveal(Order) +
+  shadow_wake(0.8)
+  
+r_gif<-animate(r, nframes = 150, fps = 2, end_pause = 60, width = 500, height = 525)
+
+r_gif
+
+anim_save(here('Plots and Tables/RVCAT','Animated_CurrentYear_MeanBar.gif')) ##saves just barplot, before adding map
+
+p<-ggplot(animate.map.catch.mean, aes(Mid.Long.DD, Mid.Lat.DD)) +
+  geom_path(data = ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ 
+  geom_path(data=animate.map.catch.mean, mapping=aes(Mid.Long.DD, Mid.Lat.DD), size=1) + 
+  geom_point(aes(group=seq_along(Order), color= survey), size=6, alpha=0.6) + 
+  theme_bw() + 
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  map_theme +
+  scale_color_viridis(discrete=T, labels=c('Nearshore Cruise', 'Offshore Cruise'), 
+                      name='', begin=0,end=0.6, alpha = 0.6) +
+  labs(title='Lake Superior Fish Collections',
+       subtitle=(paste('USGS bottom trawl assessment,', max(animate.map.catch.mean$YEAR))), 
+       caption=ann_data_access)+ 
+  transition_reveal(Order)+
+  theme(legend.title = element_blank(), 
+        legend.position = "none")
+
+t<-p+geom_text(aes(x=-85, y=49, label=OP_DATE), size=8, family='serif')+
+  transition_reveal(Order)
+
+t_gif<-animate(t, fps = 2, end_pause = 60, nframes=150, 
+               width = 1000, height = 500, renderer = gifski_renderer(loop=T))
+
+r_mgif<-image_read(r_gif)
+t_mgif<-image_read(t_gif)
+
+new_gif<-image_append(c(t_mgif[1], r_mgif[1]))
+for(i in 2:100){
+  combined <- image_append(c(t_mgif[i], r_mgif[i]))
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+image_write(new_gif,here('Plots and Tables/RVCAT','Animated_ns_os_cumulating_biomass.gif'))  
+
+########################################################################################
+##animate bar plots of cumulative annual mean biomass for nearshore survey
+##Bar chart race, ns biomass--------------------------------------------------------------------------------------------------------------------------
+
+ns.bcr <- export.annual.sum.by.species %>%
   subset(survey == 'nearshore') %>%
-  left_join(export.annual.ns.species.sum) %>%
-  select(YEAR, locations, mean.kg, median.kg, fishes.mean, fishes.total,
-         "Bloater", "Cisco", "Lake Whitefish", "Rainbow Smelt", 
-         "hatchery Lake Trout", "lean Lake Trout", "Burbot",
-         "Slimy Sculpin", "Spoonhead Sculpin", "Deepwater Sculpin")
+  ungroup() %>%
+  select(YEAR, COMMON_NAME, mean.kg) %>%
+  subset(COMMON_NAME == 'Rainbow Smelt' |
+           COMMON_NAME == 'Cisco' |
+           COMMON_NAME == 'Bloater' |
+           COMMON_NAME == 'Lake Whitefish' |
+           COMMON_NAME == 'lean Lake Trout' |
+           COMMON_NAME == 'hatchery Lake Trout' |
+           COMMON_NAME == 'Burbot' |
+           COMMON_NAME == 'Slimy Sculpin' |
+           COMMON_NAME == 'Spoonhead Sculpin' |
+           COMMON_NAME == 'Deepwater Sculpin')  %>%
+  group_by(YEAR) %>% 
+  mutate(
+    rank = min_rank(-mean.kg) * 1,
+    Value_rel = mean.kg / mean.kg[rank == 1],
+    Value_lbl = paste0(" ", mean.kg)
+  ) %>%
+  subset(rank <= 10) %>% 
+  ungroup() %>%
+  arrange(YEAR, mean.kg) 
 
-##Offshore annual Biomass summary Table for export
-export.annual.os.species.sum <- export.trawls.zeros.allspecies %>%
-  select(OP_ID,YEAR,survey,SPECIES,COMMON_NAME, KGHA) %>%
-  subset(survey == 'offshore') %>%
-  subset(SPECIES == 206 |
-           SPECIES == 308 |
-           SPECIES == 904) %>%
-  group_by(YEAR,COMMON_NAME) %>% 
-  summarise(mean.kg=mean(KGHA)) %>%
-  pivot_wider(names_from = COMMON_NAME, values_from = mean.kg) 
+p<-ggplot(ns.bcr, aes(rank, group = COMMON_NAME))+ 
+  geom_tile(aes(y=mean.kg/2, height=mean.kg, width=0.9, fill=COMMON_NAME))+
+  geom_text(aes(y=0, label=paste(COMMON_NAME, "  ")), size=5, vjust=0.2, hjust=1)+
+#  geom_text(aes(y=mean.kg, label = Value_lbl), size = 5, hjust=0) +
+  coord_flip(clip='off', expand=F)+
+  scale_y_continuous(expand=c(0,0), 
+                     breaks = pretty_breaks()) +
+  scale_x_reverse() +
+  scale_fill_viridis(discrete=T, guide=F)+  
+  labs(title='Lake Superior Annual Nearshore Fish Biomass', y='Mean biomass (kg/hectare)', x=' ',
+       subtitle='{round(frame_time,0)}',
+       caption=ann_data_access)+ 
+  plot_theme+
+  theme(plot.margin = margin(1,1,1,6, 'cm'),
+        panel.background = element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        plot.title=element_text(size=20),
+        axis.text.x=element_text(size=18, color='black'),
+        axis.title.x=element_text(size=18, color='black'),
+        axis.line=element_line(size=1),
+        plot.subtitle = element_text(size=18),
+        plot.caption=element_text(size=15), 
+        legend.position = "none") +
+  transition_time(YEAR)+
+  ease_aes('cubic-in-out')
 
-export.annual.os.table <- export.annual.sum %>%
-  subset(survey == 'offshore') %>%
-  left_join(export.annual.os.species.sum) %>%
-  select(YEAR, locations, mean.kg, fishes.mean, fishes.total,
-         "Kiyi", "siscowet Lake Trout", "Deepwater Sculpin")
+animate(p, fps = 4, nframes=200, width = 1024, height = 512, 
+        renderer=gifski_renderer(loop=T), end_pause=20) ##nframes =n years x2-1
 
-##Export to Excel File
-library(openxlsx)
-metadata<-read.xlsx(here('Data','ns_os_all_MetaData.xlsx'))
-list.sheets<-list('Catch_NoZeros'=export.Catch.NoZeros, 
-## not included     'Catch_Zeros'= export.Catch.Zeros,
-                  'AnnualSummary'=export.annual.sum,
-                  'NS_table' = export.annual.ns.table, 
-                  'OS_table' = export.annual.os.table,
-                  'Age1_Fish' = age1.table, 
-                  'MetaData'= metadata)
+anim_save(here("Plots and Tables/RVCAT",'Animated_ns_bar_race.gif'))
 
-openxlsx::write.xlsx(list.sheets, here('Plots and Tables/RVCAT','export_ns_os_all.xlsx'))
+########################################################################################
+########################################################################################
 
 
-#########################################################################################################
-##   Sample Density Distribution plots of species depths   #########
-#########################################################################################################
+##   Sample Density Distribution plots of species depths and temperatures   #########
+########################################################################################
 ##depths<-subset(all.data, TARGET == 2 | TARGET == 117 | TARGET == 118) ## %>%
 ##  & TR_DESIGN == 4 | TR_DESIGN == 25) %>%
 
 depths<-subset(all.data, YEAR >= 2011) %>% 
   distinct(OP_ID, .keep_all = TRUE) %>% 
   select(OP_ID,YEAR,SERIAL,TARGET,TR_DESIGN, LOCATION,Mid.Lat.DD, Mid.Long.DD, 
-         BEG_DEPTH, END_DEPTH, FISHING_DEPTH, Surface.Temp, Bottom.Temp) %>% 
+         BEG_DEPTH, END_DEPTH, FISHING_DEPTH, Surface.Temp, Bottom.Temp, SPECIES, NUM) %>% 
   mutate(Range.Depth = abs(END_DEPTH-BEG_DEPTH), 
          trawl = case_when(
            TR_DESIGN == 4 | TR_DESIGN == 5 | TR_DESIGN == 25 | TR_DESIGN == 26 |
@@ -3242,101 +3667,8 @@ ggplot(subset(dfishy1, SPECIES %in% c("Lean Lake Trout", "Siscowet Lake Trout"))
 ggsave(here('Plots and Tables/RVCAT','laketrout_depths.png'), height=20, width=40, dpi=300, units='cm')
 
 
-
-#########################################################################################################
-#########################################################################################################
-#########################################################################################################
-##Animated map of sites sampled in the current year and corresponding fish biomass and diversity#########
-#########################################################################################################
-##maps----------------------------------------------------------------------------------------------------------------------------
-ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "lake_superior")
-ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
-ls_poly.fort <- fortify(ls_poly)
-
-
-##Create data set of points to plot
-all.current.yr<-all.data %>%
-  subset(YEAR==max(YEAR-1)) %>% 
-  subset(TARGET==2|TARGET==117|TARGET==118) %>%
-  select(LOCATION, Mid.Lat.DD, Mid.Long.DD, TARGET, OP_DATE, TIME, NUM) %>%
-  group_by(OP_DATE, LOCATION,Mid.Lat.DD, Mid.Long.DD, TARGET) %>% 
-  summarise(fish = sum (NUM)) %>%
-  ungroup() %>% 
-  mutate(cumfish = cumsum(fish), order = 1:nrow(all.current.yr)) ##for the order that the points will appear on the map
-
-#############################################################################################
-
-
-#image_write(new_gif,here('Plots and Tables/RVCAT','Animated_CurrentYear_Catch_map.gif'))
-
-
 ########################################################################################
 ########################################################################################
-########################################################################################
-##animate bar plots of cumulative annual mean biomass for nearshore and offshore cruises-
-##Bar chart race, ns biomass--------------------------------------------------------------------------------------------------------------------------
-
-ns.bcr <- export.annual.sum.by.species %>%
-  subset(survey == 'nearshore') %>%
-  ungroup() %>%
-  select(YEAR, COMMON_NAME, mean.kg) %>%
-  renameCol('COMMON_NAME','Species')%>%
-  renameCol('mean.kg','kg.ha') %>% 
-  subset(Species == 'Rainbow Smelt' |
-           Species == 'Cisco' |
-           Species == 'Bloater' |
-           Species == 'Lake Whitefish' |
-           Species == 'lean Lake Trout' |
-           Species == 'hatchery Lake Trout' |
-           Species == 'Burbot' |
-           Species == 'Slimy Sculpin' |
-           Species == 'Spoonhead Sculpin' |
-           Species == 'Deepwater Sculpin')  %>%
-  group_by(YEAR) %>% 
-  mutate(
-    rank = min_rank(-kg.ha) * 1,
-    Value_rel = kg.ha / kg.ha[rank == 1],
-    Value_lbl = paste0(" ", kg.ha)
-  ) %>%
-  subset(rank <= 10) %>% 
-  ungroup() %>%
-  arrange(YEAR, kg.ha) 
-
-#%>% 
-#  rank<-9:1
-
-
-p<-ggplot(ns.bcr, aes(rank, group = Species))+  ## frame=YEAR
-  geom_tile(aes(y=kg.ha/2, height=kg.ha, width=0.9, fill=Species))+
-  geom_text(aes(y=0, label=paste(Species, "  ")), size=5, vjust=0.2, hjust=1)+
-#  geom_text(aes(y=kg.ha,label = Value_lbl, hjust=0)) +
-  coord_flip(clip='off', expand=F)+
-  scale_y_continuous(labels=scales::comma)+
-  scale_x_reverse()+
-  scale_fill_viridis(discrete=T, guide=F)+
-  labs(title='Lake Superior Annual Nearshore Fish Biomass', y='Mean biomass (kg/hectare)', x=' ',
-       subtitle='{round(frame_time,0)}',
-       caption=ann_data_access)+
-  theme(plot.margin = margin(1,1,1,6, 'cm'),
-        panel.background = element_blank(),
-        axis.text.y=element_blank(),
-        axis.ticks.y=element_blank(),
-        plot.title=element_text(size=20),
-        axis.text.x=element_text(size=18, color='black'),
-        axis.title.x=element_text(size=18, color='black'),
-        axis.line=element_line(size=1),
-        plot.subtitle = element_text(size=18),
-        plot.caption=element_text(size=15))+
-  transition_time(YEAR)+
-  ease_aes('cubic-in-out')
-
-animate(p, fps = 4, nframes=200, width = 1024, height = 512, 
-        renderer=gifski_renderer(loop=T), end_pause=20) ##nframes =n years x2-1
-
-anim_save(here("Plots and Tables/RVCAT",'Animated_ns_bar_race.gif'))
-
-
-
 ####################################################################################
 ##Sankey Diagram Nearshore Offshore Fish Collections#########################################
 ## USING network3D Package
