@@ -3395,23 +3395,19 @@ anim_save(here("Plots and Tables/RVCAT",'Animated_ns_bar_race.gif'))
 
 ########################################################################################
 ########################################################################################
-
-
 ##   Sample Density Distribution plots of species depths and temperatures   #########
 ########################################################################################
-##depths<-subset(all.data, TARGET == 2 | TARGET == 117 | TARGET == 118) ## %>%
-##  & TR_DESIGN == 4 | TR_DESIGN == 25) %>%
 
 depths<-subset(all.data, YEAR >= 2011) %>% 
   distinct(OP_ID, .keep_all = TRUE) %>% 
   select(OP_ID,YEAR,SERIAL,TARGET,TR_DESIGN, LOCATION,Mid.Lat.DD, Mid.Long.DD, 
-         BEG_DEPTH, END_DEPTH, FISHING_DEPTH, Surface.Temp, Bottom.Temp, SPECIES, NUM) %>% 
+         BEG_DEPTH, END_DEPTH, FISHING_DEPTH, Surface.Temp, Bottom.Temp) %>% 
   mutate(Range.Depth = abs(END_DEPTH-BEG_DEPTH), 
          trawl = case_when(
            TR_DESIGN == 4 | TR_DESIGN == 5 | TR_DESIGN == 25 | TR_DESIGN == 26 |
-             TR_DESIGN == 27 | TR_DESIGN == 44 ~ "bottom", 
+             TR_DESIGN == 27 | TR_DESIGN == 44 ~ "Bottom trawl", 
            TR_DESIGN == 21 | TR_DESIGN == 22 | TR_DESIGN == 28 | TR_DESIGN == 41 |
-             TR_DESIGN == 45  ~ "mid-water")) %>%
+             TR_DESIGN == 45  ~ "Mid-water trawl")) %>%
   filter(Range.Depth<=10) 
     
 dslimy<-subset(all.data, SPECIES==902) %>% 
@@ -3438,6 +3434,14 @@ dkiyi<-subset(all.data, SPECIES==206) %>%
   select(OP_ID, NOHA) %>%
   renameCol('NOHA','Kiyi')
 
+dbfc<-subset(all.data, SPECIES==207) %>% 
+  select(OP_ID, NOHA) %>%
+  renameCol('NOHA','Blackfin Cisco')
+
+dsjc<-subset(all.data, SPECIES==208) %>% 
+  select(OP_ID, NOHA) %>%
+  renameCol('NOHA','Shortjaw Cisco')
+
 dlwf<-subset(all.data, SPECIES==203) %>% 
   select(OP_ID, NOHA) %>%
   renameCol('NOHA','Lake Whitefish')
@@ -3454,54 +3458,101 @@ dllt<-subset(all.data, SPECIES==317) %>%
   select(OP_ID, NOHA) %>%
   renameCol('NOHA','Lean Lake Trout')
 
+drbs<-subset(all.data, SPECIES==109) %>% 
+  select(OP_ID, NOHA) %>%
+  renameCol('NOHA','Rainbow Smelt')
+
+dnss<-subset(all.data, SPECIES==130) %>% 
+  select(OP_ID, NOHA) %>%
+  renameCol('NOHA','Ninespine Stickleback')
+
+dtp<-subset(all.data, SPECIES==131) %>% 
+  select(OP_ID, NOHA) %>%
+  renameCol('NOHA','Trout-Perch')
+
+dlns<-subset(all.data, SPECIES==404) %>% 
+  select(OP_ID, NOHA) %>%
+  renameCol('NOHA','Longnose Sucker')
+
 dfishy1<-left_join(depths, dslimy) 
 dfishy1<-left_join(dfishy1, dspoon) 
 dfishy1<-left_join(dfishy1, ddeep) 
 dfishy1<-left_join(dfishy1, dcisco) 
 dfishy1<-left_join(dfishy1, dbloater) 
 dfishy1<-left_join(dfishy1, dkiyi) 
+dfishy1<-left_join(dfishy1, dbfc) 
+dfishy1<-left_join(dfishy1, dsjc) 
 dfishy1<-left_join(dfishy1, dlwf) 
 dfishy1<-left_join(dfishy1, dpwf) 
 dfishy1<-left_join(dfishy1, dslt) 
 dfishy1<-left_join(dfishy1, dllt) 
+dfishy1<-left_join(dfishy1, drbs) 
+dfishy1<-left_join(dfishy1, dnss) 
+dfishy1<-left_join(dfishy1, dtp) 
+dfishy1<-left_join(dfishy1, dlns) 
 
-dfishy1<-pivot_longer(dfishy1, 16:25, names_to = "SPECIES", values_to = "NOHA")
+dfishy1[is.na(dfishy1)] <- 0 
+
+dfishy1<-pivot_longer(dfishy1, 16:31, names_to = "FISH", values_to = "Fdensity")
 
 dfishy1$avgdepth = rowMeans(dfishy1[,c("BEG_DEPTH", "END_DEPTH")], na.rm = TRUE)
 
-
-dfishy1$NOHA[is.na(dfishy1$NOHA)] = 0
-##dfishy1$Bottom.Temp[is.na(dfishy1$Bottom.Temp)] = 0
-
 ##abundance weighting 
 dfishy1 <- dfishy1 %>%
-  group_by(SPECIES) %>%
-  mutate(NOHA.grp = sum(NOHA)) %>%
+  group_by(FISH) %>%
+  mutate(Fdensity.grp = sum(Fdensity)) %>%
   ungroup()
 
 ##Get mean depths
 dfishy1.sum <- dfishy1 %>%
-  group_by(SPECIES, trawl) %>%
-  summarise(depth.mean=sum(FISHING_DEPTH*NOHA)/sum(NOHA), 
-            temp.mean=sum(Bottom.Temp*NOHA)/sum(NOHA), na.rm=TRUE) %>%
+  group_by(FISH, trawl) %>%
+  summarise(cdepth.mean=sum(FISHING_DEPTH*Fdensity)/sum(Fdensity),
+            bdepth.mean=sum(avgdepth*Fdensity)/sum(Fdensity), 
+            temp.mean=sum(Bottom.Temp*Fdensity)/sum(Fdensity)) %>%
   ungroup()
 
 
 ###########################################################################################  
-##Single Species Depth plot
+##Single Species Depth plot for bottom trawl
 
-##Get mean depths
-dfishy1.sum <- subset(dfishy1.sum, SPECIES == "Kiyi" | trawl == "bottom") 
-
-ggplot(subset(dfishy1, SPECIES == "Kiyi" | trawl == "bottom")) +
-  aes(x=FISHING_DEPTH, y = ..scaled.., weight=NOHA/NOHA.grp, group=trawl, fill=trawl) + 
-  geom_density(alpha=0.4) +
-  geom_vline(data = subset(dfishy1.sum, SPECIES == "Kiyi" | trawl == "bottom"),
-             aes(xintercept=depth.mean, color='black'), size=1.2, show_guide = TRUE) +
+ggplot(subset(dfishy1, FISH == "Kiyi" & trawl == "Bottom trawl")) +
+  aes(x=avgdepth, y = ..scaled.., weight=Fdensity/Fdensity.grp) + 
+  geom_density(alpha=0.4, fill = 'deepskyblue2') +
+  geom_vline(data = subset(dfishy1.sum, FISH == "Kiyi" & trawl == "Bottom trawl"),
+             aes(xintercept=bdepth.mean), color='black', size=1.2, show.legend = FALSE) +
   geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
   geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
   plot_theme + 
-  theme(legend.position = c(.1, .85))  +
+  theme(legend.position = "none") +
+  scale_x_continuous(expand=c(0,0), limits = c(0, 410), breaks=c(0,100, 200, 300, 400), 
+                     labels=c('0', '100', '200', '300', '400'))+
+  scale_y_continuous(expand=c(0,0))+
+  labs( x='Fish depth of capture (m)', y='Relative density',
+        title='Lake Superior Kiyi Depth Distribution',
+        subtitle=' ',
+        caption=ann_data_access) +
+  annotate(geom="text", x=295, y=0.1, label="Sampled depths", size=6, family='serif') +
+  annotate(geom="text", x=390, y=0.12, label="atop(Maximum, depth)", 
+           size=6, family='serif', parse = TRUE) 
+
+ggsave(here('Plots and Tables/RVCAT','kiyi_BottomTrawlCaptures.png'), height=20, width=40, dpi=300, units='cm')
+
+
+#######################################################################################
+##Single species showing midwater and bottom trawl catches
+
+ggplot(subset(dfishy1, FISH == "Kiyi")) +
+  aes(x=FISHING_DEPTH, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=trawl, fill=trawl) + 
+  geom_density(alpha=0.4) +
+  geom_vline(data = subset(dfishy1.sum, FISH == "Kiyi" & trawl == "Mid-water trawl"),
+             aes(xintercept=cdepth.mean), color= "black", size=1.2, show.legend = FALSE) +
+  geom_vline(data = subset(dfishy1.sum, FISH == "Kiyi" & trawl == "Bottom trawl"),
+             aes(xintercept=bdepth.mean), color='black', size=1.2, show.legend = FALSE) +
+  geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
+  geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
+  plot_theme + 
+  theme(legend.position = c(.8, .8), 
+        legend.title=element_blank()) +
   scale_x_continuous(expand=c(0,0), limits = c(0, 410), breaks=c(0,100, 200, 300, 400), 
                      labels=c('0', '100', '200', '300', '400'))+
   scale_y_continuous(expand=c(0,0))+
@@ -3514,25 +3565,77 @@ ggplot(subset(dfishy1, SPECIES == "Kiyi" | trawl == "bottom")) +
   annotate(geom="text", x=390, y=0.12, label="atop(Maximum, depth)", 
            size=6, family='serif', parse = TRUE) 
 
-ggsave(here('Plots and Tables/RVCAT','kiyi_depths.png'), height=20, width=40, dpi=300, units='cm')
+ggsave(here('Plots and Tables/RVCAT','kiyi_CaptureDepths_byTrawl.png'), height=20, width=40, dpi=300, units='cm')
 
+#######################################################################################
+##Multi species showing midwater and bottom trawl catches
+##Get mean depths
+ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi")), 
+       aes(x=FISHING_DEPTH, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
+  geom_density(alpha=0.4) +
+  plot_theme + 
+  theme(legend.position = c(.9, .8), 
+        legend.title=element_blank()) +
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  scale_fill_brewer(palette="Dark2") +
+  labs( x='Fish depth of capture (m)', y='Relative density',
+        title='Lake Superior Ciscoe Depth Distributions',
+        subtitle=' ',
+        caption=ann_data_access) +
+  facet_grid(.~trawl, scales="free")
+
+ggsave(here('Plots and Tables/RVCAT','ciscoe_CaptureDepths_byTrawl.png'), height=20, width=40, dpi=300, units='cm')
+
+#####################
+ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi", 
+                                   "Rainbow Smelt")), 
+       aes(x=FISHING_DEPTH, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
+  geom_density(alpha=0.4) +
+  plot_theme + 
+  theme(legend.position = c(.9, .8), 
+        legend.title=element_blank()) +
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  scale_fill_brewer(palette="Dark2") +
+  labs( x='Fish depth of capture (m)', y='Relative density',
+        title='Lake Superior Ciscoe and Rainbow Smelt Depth Distributions',
+        subtitle=' ',
+        caption=ann_data_access) +
+  facet_grid(.~trawl, scales="free" )
+
+ggsave(here('Plots and Tables/RVCAT','ciscoe_RBS_CaptureDepths_byTrawl.png'), height=20, width=40, dpi=300, units='cm')
+###########################################################################################  
 
 ###########################################################################################  
 ##Single Species Temperature plot
 
-##Get mean temps
-dfishy2.sum <- subset(dfishy1.sum, SPECIES == "Bloater" | SPECIES == "Cisco" | SPECIES == "Kiyi") 
+ggplot(subset(dfishy1, FISH == "Kiyi" & trawl == "Bottom trawl")) +
+  aes(x=Bottom.Temp, y = ..scaled.., weight=Fdensity/Fdensity.grp) + 
+  geom_density(alpha=0.4, fill = 'deepskyblue2') +
+  geom_vline(data = subset(dfishy1.sum, FISH == "Kiyi" & trawl == "Bottom trawl"),
+             aes(xintercept=temp.mean), color='black', size=1.2, show.legend = FALSE) +
+  geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
+  geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
+  plot_theme + 
+  theme(legend.position = "none") +
+  scale_x_continuous(expand=c(0,0), limits = c(0, 25), breaks=c(0, 5, 10, 15, 20, 25), 
+                     labels=c('0', '5', '10', '15', '20', '25'))+
+  scale_y_continuous(expand=c(0,0))+
+  labs( x='Fish temperature of capture (m)', y='Relative density',
+        title='Lake Superior Kiyi Temperature Distribution',
+        subtitle=' ',
+        caption=ann_data_access) 
 
-ggplot(subset(dfishy1, SPECIES %in% c("Bloater", "Cisco", "Kiyi")), 
-       aes(x=Bottom.Temp, y = ..scaled.., weight=NOHA/NOHA.grp, group=SPECIES, fill=SPECIES)) + 
+ggsave(here('Plots and Tables/RVCAT','kiyi_BottomTrawlCaptures.png'), height=20, width=40, dpi=300, units='cm')
+
+##Multi-species temperature plot
+ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi")), 
+       aes(x=Bottom.Temp, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
   geom_density(alpha=0.4) +
-#  geom_vline(dfishy2.sum, aes(xintercept=depth.mean, color=SPECIES), size=1.2, show_guide = TRUE) +
-#  geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
-#  geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
   plot_theme + 
   theme(legend.title=element_blank()) +
-  theme(legend.position=c(0.8,0.72)) +
-##  theme(legend.position="none") +
+  theme(legend.position=c(0.8,0.8)) +
   scale_x_continuous(expand=c(0,0), limits = c(0, 25), breaks=c(0, 5, 10, 15, 20, 25), 
                      labels=c('0', '5', '10', '15', '20', '25'))+
   scale_y_continuous(expand=c(0,0))+
@@ -3540,24 +3643,64 @@ ggplot(subset(dfishy1, SPECIES %in% c("Bloater", "Cisco", "Kiyi")),
   labs( x='Capture Temperature (C)', y='Relative density',
         title='Lake Superior Ciscoe Temperature Distribution',
         subtitle=' ',
+        caption=ann_data_access) 
+
+ggsave(here('Plots and Tables/RVCAT','ciscoe_temps.png'), height=20, width=40, dpi=300, units='cm')
+
+###########################################################################################  
+##Ciscoe capture depths
+
+ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi")), 
+       aes(x=FISHING_DEPTH, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
+  geom_density(alpha=0.4) +
+  geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
+  geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
+  plot_theme + 
+  theme(legend.title=element_blank()) +
+  theme(legend.position=c(0.8,0.72)) +
+  scale_x_continuous(expand=c(0,0), limits = c(0, 410), breaks=c(0,100, 200, 300, 400), 
+                     labels=c('0', '100', '200', '300', '400'))+
+  scale_y_continuous(expand=c(0,0))+
+  scale_fill_brewer(palette="Dark2") +
+  labs( x='Capture depth (m)', y='Relative density',
+      title='Lake Superior Ciscoe Depth Distributions',
+      subtitle=' ',
+      caption=ann_data_access) +
+  annotate(geom="text", x=295, y=0.1, label="Sampled depths", size=6, family='serif') +
+  annotate(geom="text", x=390, y=0.12, label="atop(Maximum, depth)", 
+           size=6, family='serif', parse = TRUE) 
+
+ggsave(here('Plots and Tables/RVCAT','ciscoe_cdepths.png'), height=20, width=40, dpi=300, units='cm')
+
+####Cisco and Kiyi capture depths
+ggplot(subset(dfishy1, FISH %in% c("Cisco", "Kiyi")), 
+       aes(x=FISHING_DEPTH, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
+  geom_density(alpha=0.4) +
+  geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
+  geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
+  plot_theme + 
+  theme(legend.title=element_blank()) +
+  theme(legend.position=c(0.8,0.72)) +
+  scale_x_continuous(expand=c(0,0), limits = c(0, 410), breaks=c(0,100, 200, 300, 400), 
+                     labels=c('0', '100', '200', '300', '400'))+
+  scale_y_continuous(expand=c(0,0))+
+  scale_fill_brewer(palette="Dark2") +
+  labs( x='Capture depth (m)', y='Relative density',
+        title='Lake Superior Cisco and Kiyi Depth Distributions',
+        subtitle=' ',
         caption=ann_data_access) +
   annotate(geom="text", x=295, y=0.1, label="Sampled depths", size=6, family='serif') +
   annotate(geom="text", x=390, y=0.12, label="atop(Maximum, depth)", 
            size=6, family='serif', parse = TRUE) 
 
-ggsave(here('Plots and Tables/RVCAT','ciscoe_temps.png'), height=20, width=40, dpi=300, units='cm')
+ggsave(here('Plots and Tables/RVCAT','cisco_kiyi_cdepths.png'), height=20, width=40, dpi=300, units='cm')
 
-###########################################################################################  
+################################################################################################
+##Ciscoe and RBS bathymetric depth
 
-##Ciscoe depths
-
-##Get mean depths
-dfishy2.sum <- subset(dfishy1.sum, SPECIES == "Bloater" | SPECIES == "Cisco" | SPECIES == "Kiyi") 
-
-ggplot(subset(dfishy1, SPECIES %in% c("Bloater", "Cisco", "Kiyi")), 
-       aes(x=avgdepth, y = ..scaled.., weight=NOHA/NOHA.grp, group=SPECIES, fill=SPECIES)) + 
+ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi")), 
+       aes(x=avgdepth, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
   geom_density(alpha=0.4) +
-  geom_vline(dfishy2.sum, aes(xintercept=depth.mean, color=SPECIES), size=1.2, show_guide = TRUE) +
   geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
   geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
   plot_theme + 
@@ -3568,27 +3711,48 @@ ggplot(subset(dfishy1, SPECIES %in% c("Bloater", "Cisco", "Kiyi")),
   scale_y_continuous(expand=c(0,0))+
   scale_fill_brewer(palette="Dark2") +
   labs( x='Bathymetric depth (m)', y='Relative density',
-      title='Lake Superior Ciscoe Depth Distributions',
-      subtitle=' ',
-      caption=ann_data_access) +
+        title='Lake Superior Ciscoe Depth Distributions',
+        subtitle=' ',
+        caption=ann_data_access) +
   annotate(geom="text", x=295, y=0.1, label="Sampled depths", size=6, family='serif') +
   annotate(geom="text", x=390, y=0.12, label="atop(Maximum, depth)", 
            size=6, family='serif', parse = TRUE) 
 
-ggsave(here('Plots and Tables/RVCAT','ciscoe_depths.png'), height=20, width=40, dpi=300, units='cm')
+ggsave(here('Plots and Tables/RVCAT','ciscoe_bathydepths.png'), height=20, width=40, dpi=300, units='cm')
 
+
+###########################################################################################  
+##Ciscoe and RBS depths of capture
+
+ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi", "Rainbow Smelt")), 
+       aes(x=FISHING_DEPTH, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
+  geom_density(alpha=0.4) +
+  geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
+  geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
+  plot_theme + 
+  theme(legend.title=element_blank()) +
+  theme(legend.position=c(0.8,0.72)) +
+  scale_x_continuous(expand=c(0,0), limits = c(0, 410), breaks=c(0,100, 200, 300, 400), 
+                     labels=c('0', '100', '200', '300', '400'))+
+  scale_y_continuous(expand=c(0,0))+
+  scale_fill_brewer(palette="Dark2") +
+  labs( x='Depth of capture (m)', y='Relative density',
+        title='Lake Superior Ciscoe and Rainbow Smelt Depth Distributions',
+        subtitle=' ',
+        caption=ann_data_access) +
+  annotate(geom="text", x=295, y=0.1, label="Sampled depths", size=6, family='serif') +
+  annotate(geom="text", x=390, y=0.12, label="atop(Maximum, depth)", 
+           size=6, family='serif', parse = TRUE) 
+
+ggsave(here('Plots and Tables/RVCAT','ciscoe_RBS_capturedepths.png'), height=20, width=40, dpi=300, units='cm')
 
 
 ###########################################################################################  
 ##Sculpin depths
 
-##Get mean depths
-dfishy2.sum <- subset(dfishy1.sum, SPECIES == "Slimy Sculpin" | SPECIES == "Spoonhead Sculpin" | SPECIES == "Deepwater Sculpin") 
-
-ggplot(subset(dfishy1, SPECIES %in% c("Slimy Sculpin", "Spoonhead Sculpin", "Deepwater Sculpin")), 
-       aes(x=avgdepth, y = ..scaled.., weight=NOHA/NOHA.grp, group=SPECIES, fill=SPECIES)) + 
+ggplot(subset(dfishy1, FISH %in% c("Slimy Sculpin", "Spoonhead Sculpin", "Deepwater Sculpin")), 
+       aes(x=avgdepth, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
   geom_density(alpha=0.4) +
-  geom_vline(dfishy2.sum, aes(xintercept=depth.mean, color=SPECIES), size=1.2, show_guide = TRUE) +
   geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
   geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
   plot_theme + 
@@ -3611,13 +3775,10 @@ ggsave(here('Plots and Tables/RVCAT','sculpin_depths.png'), height=20, width=40,
 
 ##############################################################################################
 ##Lake Whitefish and Pygmy Whitefish depths
-##Get mean depths
-dfishy2.sum <- subset(dfishy1.sum, SPECIES == "Pygmy Whitefish" | SPECIES == "Lake Whitefish") 
 
-ggplot(subset(dfishy1, SPECIES %in% c("Pygmy Whitefish", "Lake Whitefish")), 
-       aes(x=avgdepth, y = ..scaled.., weight=NOHA/NOHA.grp, group=SPECIES, fill=SPECIES)) + 
+ggplot(subset(dfishy1, FISH %in% c("Pygmy Whitefish", "Lake Whitefish")), 
+       aes(x=avgdepth, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
   geom_density(alpha=0.4) +
-  geom_vline(dfishy2.sum, aes(xintercept=depth.mean, color=SPECIES), size=1.2, show_guide = TRUE) +
   geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
   geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
   plot_theme + 
@@ -3640,13 +3801,10 @@ ggsave(here('Plots and Tables/RVCAT','lwf_pwf_depths.png'), height=20, width=40,
 
 ##############################################################################################
 ##Lake Trout depths
-##Get mean depths
-dfishy2.sum <- subset(dfishy1.sum, SPECIES == "Lean Lake Trout" | SPECIES == "Siscowet Lake Trout") 
 
-ggplot(subset(dfishy1, SPECIES %in% c("Lean Lake Trout", "Siscowet Lake Trout")), 
-       aes(x=avgdepth, y = ..scaled.., weight=NOHA/NOHA.grp, group=SPECIES, fill=SPECIES)) + 
+ggplot(subset(dfishy1, FISH %in% c("Lean Lake Trout", "Siscowet Lake Trout")), 
+       aes(x=avgdepth, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
   geom_density(alpha=0.4) +
-  geom_vline(dfishy2.sum, aes(xintercept=depth.mean, color=SPECIES), size=1.2, show_guide = TRUE) +
   geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
   geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
   plot_theme + 
@@ -3666,6 +3824,29 @@ ggplot(subset(dfishy1, SPECIES %in% c("Lean Lake Trout", "Siscowet Lake Trout"))
 
 ggsave(here('Plots and Tables/RVCAT','laketrout_depths.png'), height=20, width=40, dpi=300, units='cm')
 
+##Ninespine Stickleback and Trout Perch depths
+
+ggplot(subset(dfishy1, FISH %in% c("Ninespine Stickleback", "Trout-Perch")), 
+       aes(x=avgdepth, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
+  geom_density(alpha=0.4) +
+  geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
+  geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
+  plot_theme + 
+  theme(legend.title=element_blank()) +
+  theme(legend.position=c(0.8,0.72)) +
+  scale_x_continuous(expand=c(0,0), limits = c(0, 410), breaks=c(0,100, 200, 300, 400), 
+                     labels=c('0', '100', '200', '300', '400'))+
+  scale_y_continuous(expand=c(0,0))+
+  scale_fill_brewer(palette="Dark2") +
+  labs( x='Bathymetric depth (m)', y='Relative density',
+        title='Lake Superior Ninespine Stickleback and Trout-Perch Depth Distributions',
+        subtitle=' ',
+        caption=ann_data_access) +
+  annotate(geom="text", x=295, y=0.1, label="Sampled depths", size=6, family='serif') +
+  annotate(geom="text", x=390, y=0.12, label="atop(Maximum, depth)", 
+           size=6, family='serif', parse = TRUE) 
+
+ggsave(here('Plots and Tables/RVCAT','9spineTP_depths.png'), height=20, width=40, dpi=300, units='cm')
 
 ########################################################################################
 ########################################################################################
