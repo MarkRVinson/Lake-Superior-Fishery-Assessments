@@ -41,9 +41,23 @@ raw.data$Mid.Long.DD<-(raw.data$BEG_LONGITUDE_DD+raw.data$END_LONGITUDE_DD)/2
 
 raw.data$YearClass<-raw.data$YEAR-1
 
-##Select minimum number of fields of interest
-data1<-select(raw.data,1,32,4,5,8,33,34,35)
 
+##add country based on states
+raw.data <- raw.data %>%
+  mutate(Country = case_when(
+    STATE == 'WI'  ~ "USA", 
+    STATE == 'MN'  ~ "USA", 
+    STATE == 'MI'  ~ "USA", 
+    STATE == 'E'  ~ "Canada",
+    STATE == 'W'  ~ "Canada"))
+
+
+##Select minimum number of fields of interest
+data1<-select(raw.data,1,32,4,5,8, 9, 33,34,35, 36)
+
+##data1<-subset(data1, TARGET==2 & YEAR >1973 &  M_UNIT == "WI2")
+
+data1<-subset(data1, TARGET==2 & YEAR >1977 &  Country == "USA")
 
 
 ###########################
@@ -343,7 +357,7 @@ ggsave(here('Plots and Tables/Lengths','os_Lengths_Siscowet_Means.png'), dpi = 3
 ##vertical histograms 
 ##CISCO--------------------------------------------------------------------------------------------------------------------
 cisco <- data3 %>%
-  filter(SPECIES=="202",TARGET==2, YEAR >=1989)
+  filter(SPECIES=="202",TARGET==2, YEAR >=1984)
 ##filter(SPECIES=="202", YEAR >=1960)
 ggplot(cisco, aes(x=LENGTH))+
   geom_histogram(binwidth = 10)+
@@ -353,10 +367,10 @@ ggplot(cisco, aes(x=LENGTH))+
   geom_hline(yintercept=0, color='black', size=.5)+
   theme(strip.placement = 'inside',
         strip.background = element_blank(),
-        strip.text=element_text(size=12))+
+        strip.text=element_text(size=8))+
   labs(y='Year', x='Total Length (mm)',
        title='Lake Superior Cisco Length Frequency',
-       subtitle='Nearshore spring bottom trawl collections, 1989-2019', 
+       subtitle='Nearshore spring bottom trawl collections in USA waters, 1984-2021', 
        caption = 'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0')+
   scale_y_continuous(breaks=NULL)+
   geom_vline(xintercept=140, size=1)
@@ -365,7 +379,7 @@ ggsave(here('Plots and Tables/Lengths','ns_Lengths_Cisco_Vhistogram.png'), dpi =
 
 ##Bloater-----------------------------------------------------------------------------------------------------------
 bloater <- data3 %>%
-  filter(SPECIES=="204",TARGET==2, YEAR >=1989)
+  filter(SPECIES=="204",TARGET==2, YEAR >=1984)
 ggplot(bloater, aes(x=LENGTH))+
   geom_histogram(binwidth = 10)+
   plot_theme+
@@ -374,19 +388,20 @@ ggplot(bloater, aes(x=LENGTH))+
   geom_hline(yintercept=0, color='black', size=.5)+
   theme(strip.placement = 'inside',
         strip.background = element_blank(),
-        strip.text=element_text(size=12))+
+        strip.text=element_text(size=8))+
   labs(y='Year', x='Total Length (mm)',
        title='Lake Superior Bloater Length Frequency',
-       subtitle='Nearshore spring bottom trawl collections, 1989-2019', 
+       subtitle='Nearshore spring bottom trawl collections in USA waters, 1984-2021', 
        caption = 'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0')+
   scale_y_continuous(breaks=NULL)+
   geom_vline(xintercept=130, size=1)
+
 
 ggsave(here('Plots and Tables/Lengths','ns_Lengths_Bloater_Vhistogram.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
 ##Lake Whitefish----------------------------------------------------------------------------------------------------
 lwf <- data3 %>%
-  filter(SPECIES=="203",TARGET==2, YEAR >=1989)%>%
+  filter(SPECIES=="203",TARGET==2, YEAR >=1984)%>%
   filter(LENGTH<501) ##included this bc there are some misentered data for lwf lengths, need to decide the best cutoff length
 ggplot(lwf, aes(x=LENGTH))+
   geom_histogram(binwidth = 10)+
@@ -396,10 +411,10 @@ ggplot(lwf, aes(x=LENGTH))+
   geom_hline(yintercept=0, color='black', size=.5)+
   theme(strip.placement = 'inside',
         strip.background = element_blank(),
-        strip.text=element_text(size=12))+
+        strip.text=element_text(size=8))+
   labs(y='Year', x='Total Length (mm)',
        title='Lake Superior Lake Whitefish (<500 mm) Length Frequency',
-       subtitle='Nearshore spring bottom trawl collections, 1989-2019', 
+       subtitle='Nearshore spring bottom trawl collections in USA waters, 1984-2021', 
        caption = 'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0')+
   scale_y_continuous(breaks=NULL)+
   geom_vline(xintercept=160, size=1)+
@@ -409,7 +424,7 @@ ggsave(here('Plots and Tables/Lengths','ns_Lengths_LWF_Vhistogram.png'), dpi = 3
 
 ##rainbow smelt------------------------------------------------------------------------------------------------------
 rbs <- data3 %>%
-  filter(SPECIES=="109",TARGET==2, YEAR >=1989)
+  filter(SPECIES=="109",TARGET==2, YEAR >=1984)
 ggplot(rbs, aes(x=LENGTH))+
   geom_histogram(binwidth = 10)+
   plot_theme+
@@ -421,7 +436,7 @@ ggplot(rbs, aes(x=LENGTH))+
         strip.text=element_text(size=12))+
   labs(y='Year', x='Total Length (mm)',
        title='Lake Superior Rainbow Smelt Length Frequency',
-       subtitle='Nearshore spring bottom trawl collections, 1989-2019', 
+       subtitle='Nearshore spring bottom trawl collections, 1984-2021', 
        caption = 'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0')+
   scale_y_continuous(breaks=NULL)+
   geom_vline(xintercept=100, size=1)+
@@ -443,7 +458,7 @@ ggplot(lns, aes(x=LENGTH))+
         strip.text=element_text(size=12))+
   labs(y='Year', x='Total Length (mm)',
        title='Lake Superior Longnose Sucker Length Frequency',
-       subtitle='Nearshore spring bottom trawl collections, 1989-2019', 
+       subtitle='Nearshore spring bottom trawl collections, 1989-2021', 
        caption = 'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0')+
   scale_y_continuous(breaks=NULL)+
  ## geom_vline(xintercept=100, size=1)+
@@ -465,7 +480,7 @@ ggplot(kiyi, aes(x=LENGTH))+
         strip.text=element_text(size=12))+
   labs(y='Year', x='Total Length (mm)',
        title='Lake Superior Kiyi Length Frequency',
-       subtitle='Offshore summer bottom trawl collections, 2011-2019', 
+       subtitle='Offshore summer bottom trawl collections, 2011-2021', 
        caption = 'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0')+
   scale_y_continuous(breaks=NULL)+
   geom_vline(xintercept=130, size=1)
@@ -487,7 +502,7 @@ ggplot(siscowet, aes(x=LENGTH))+
         strip.text=element_text(size=12))+
   labs(y='Year', x='Total Length (mm)',
        title='Lake Superior Siscowet Length Frequency',
-       subtitle='Offshore summer bottom trawl collections, 2011-2019', 
+       subtitle='Offshore summer bottom trawl collections, 2011-2021', 
        caption = 'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0')+
   scale_y_continuous(breaks=NULL)+
   ##  geom_vline(xintercept=130, size=1)

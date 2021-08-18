@@ -56,14 +56,14 @@ Prey<-select(Prey.Complete, c(1:38))
 
 
 ##Fill in the parameters you want for the analysis--species, prey types, etc. Can list one or multiple
-Predators<-c('burbot')
+Predators<-c('siscowet lake trout')
 Years<-c(2016,2017,2018,2019)
 Months<-c(1:12)
 PredSizeGreater<-0 ##if you want a minimum size for predators (ie. set at 300, size will be >300 mm)
 PredSizeLess<-800 ##if you want a maximum size for predators
 AvgDepthGreater<-0 ##if you want a minimum depth of capture (ie. if 50, will subset fish caught at >50 m)
 AvgDepthLess<-400 ##if you want a maximum depth of capture
-filename<-'burbot_2016-2019' ##how do you want export files names
+filename<-'sisLT_2016-2019' ##how do you want export files names
 
 ##Now just run the below code, outputs will save to RVCAT/Plots and Tables/Stomachs
 Prey$AvgDepth_m<-(Prey$BegDepth_m+Prey$EndDepth_m)/2

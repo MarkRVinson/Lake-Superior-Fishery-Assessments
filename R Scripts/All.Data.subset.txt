@@ -1,0 +1,28 @@
+sci.names$SPECIES<-as.factor(sci.names$SPECIES)
+
+sand <- all.data %>%
+  select(OP_ID,OP_DATE,TIME,TARGET,TR_DESIGN,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+         BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
+         DISTANCE,HA_SWEPT,SPECIES,NUM,NOHA,KGHA) %>%
+  subset(Mid.Lat.DD <= 47.2) %>% 
+  subset(Mid.Long.DD >= -91.3) %>%
+  subset(Mid.Long.DD <= -90.8) %>%
+#  subset(TR_DESIGN==25 | TR_DESIGN==4) %>%
+  mutate(Trawl.Type = str_replace_all(TR_DESIGN, c("4" = "bottom",
+                                                   "25" = "bottom", 
+                                                   "26" = "bottom",
+                                                   "21" = "mid-water",
+                                                   "22" = "mid-water",
+                                                   "28" = "mid-water"))) %>%
+  left_join(sci.names)
+
+
+##Export to Excel File
+library(openxlsx)
+metadata<-read.xlsx(here('Data','ns_os_all_MetaData.xlsx'))
+list.sheets<-list('Sand'= sand, 
+                  'MetaData'= metadata)
+
+openxlsx::write.xlsx(list.sheets, here('Plots and Tables/RVCAT','USGS.FishCollections.SandIsland.xlsx'))
+
+

@@ -6,7 +6,7 @@ library(ggplot2)
 library(purrr)
 library(viridis)
 library(reshape)
-library(xlsx)
+library(readxl)
 library(lubridate)
 library(gganimate)
 library(ggimage)
@@ -45,46 +45,51 @@ plot_theme2<-theme(axis.line=element_line(size=1, color='black'),
 ##ICE COVER_____________________________________________________________________________________________________________________________ICE COVER__________
 ##ice data, access the most recent data from: https://www.glerl.noaa.gov/data/ice/#historical -> Daily averages by lake -> Lake Superior 
 ##save file as '~/R/Scripts/RVCAT/sup_ice_recent'
-icenoaa<-read.csv(here('Data','LS_GLERL_Ice.csv'))
-icenoaa1<-select(icenoaa, c(2:49))
-icenoaa1<-as.data.frame(icenoaa1)
-icenoaa2<-melt(icenoaa1,id.vars="jday")
-icenoaa2<-renameCol(icenoaa2, 'variable','Year')
-icenoaa2<-renameCol(icenoaa2,'value','IceCover')
-icenoaa2$Yr<-lapply(as.character(icenoaa2$Year), parse_number)
-icenoaa2$Yr<-as.numeric(as.character(icenoaa2$Yr))
-icenoaadec<-subset(icenoaa2, jday>250)
-icenoaadec$ice.yr<-icenoaadec$Yr-1
-icenoaadec$jday2<-icenoaadec$jday*(-1)
-icenoaajan<-subset(icenoaa2, jday<250)
-icenoaajan$ice.yr<-icenoaajan$Yr
-icenoaajan$jday2<-icenoaajan$jday
-icenoaa4<-rbind(icenoaadec, icenoaajan)
-icenoaa4$date1<-as.Date.character(paste(icenoaa4$jday, icenoaa4$Yr), '%j%Y')
-icenoaa4$MM<-format(as.Date(icenoaa4$date1), "%m")
-icenoaa4<-subset(icenoaa4, ice.yr>1972)
-
+ice<-read_xlsx(here('Data','LS_GLERL_Ice.xlsx'), sheet = 'WideIce') %>%
+  replace(is.na(.), 0) %>%
+  pivot_longer(2:50, names_to = 'ice.year', values_to = 'ice.cover', names_transform = list(ice.year = as.numeric)) %>% 
+  mutate(Date = as.Date.character(Date)) %>% 
+  mutate(Jday = yday(Date)) %>%
+  mutate(Year = case_when(
+    Jday > 250 ~ ice.year - 1,
+    Jday < 250 ~ ice.year)) %>%
+  mutate(month = month(Date), day = day(Date)) %>%
+  select(2:7) %>%
+  mutate(Date = make_date(Year, month, day)) %>% 
+  drop_na(Date) %>%
+  mutate(jday2 = case_when(
+    Jday < 250 ~ Jday*1,
+    Jday > 250 ~ (Jday*-1 + 366) * -1)) %>%
 
 
 ##facet of all years
-ggplot(icenoaa4, aes(x=jday2, y=IceCover, color=IceCover))+
+ggplot(subset(ice, ice.year > 1976), aes(x=Jday, y=ice.cover, color=ice.cover))+
   geom_line(size=2)+
-  scale_color_gradient(low='cyan',high='navy', name='Percent\nIce Cover')+
+  scale_color_gradient(low='cyan',high='navy', name='Percent')+
+  scale_x_continuous(limits=c(0,150), breaks=c(0,31,60,91,122), labels=c('Jan','Feb','Mar','Apr','May'))+
   coord_polar()+
-  scale_x_continuous(limits=c(0,140), breaks=c(0,31,60,91,122), labels=c('Jan','Feb','Mar','Apr','May'))+
-  labs( title='Lake Superior Mean Daily Ice Cover', 
+  labs( title='Lake Superior Mean Daily Ice Concentration', 
        caption='Data: NOAA GLERL https://www.glerl.noaa.gov/data/ice/#historical',
        x='',y='')+
   plot_theme2 +
   theme_bw()  +
-  theme(legend.position=c(0.9,0.1), 
-        legend.direction="horizontal") +
-  facet_wrap(~ice.yr) 
+  theme(legend.position=c(0.7,0.05), 
+        legend.direction="horizontal",
+        legend.title = element_text()) +
+  facet_wrap(~ice.year) 
 
 ggsave(here('Plots and Tables/Ice_Temp','LS_Annual_Ice.png'), dpi = 300, width = 30, height = 35, units = "cm") 
 
 
 ##to calculate means by jday
+icejdaymean<-ice %>%
+  group_by(ice.year) %>%
+  
+  renameCol('x','meanjdayice')
+icejdaymean<-icejdaymean[complete.cases(icejdaymean),]
+icenoaa4<-merge.data.frame(icenoaa4, icejdaymean)
+
+
 icejdaymean<-aggregate(icenoaa4$IceCover, by=list(jday=icenoaa4$jday), FUN=mean)%>%
   renameCol('x','meanjdayice')
 icejdaymean<-icejdaymean[complete.cases(icejdaymean),]
@@ -103,22 +108,22 @@ icenoaa4<-merge.data.frame(icenoaa4, iceprenino)
 icenoaa4<-merge.data.frame(icenoaa4, icepostnino)
 
 ##animation
-p<-ggplot(icenoaa4, aes(x=jday, y=IceCover, color=IceCover))+
+p<-ggplot(ic, aes(x=Jday, y=ice.coverr, color=ice.cover))+
   geom_line(size=2)+
   scale_color_gradient(low='cyan',high='navy', name='Percent\nIce Cover')+
   coord_polar()+
   transition_manual(frames=ice.yr, cumulative=F)+
   scale_x_continuous(limits=c(0,140), breaks=c(0,31,60,91,122), labels=c('Jan','Feb','Mar','Apr','May'))+
-  labs( title='Lake Superior Mean Daily Ice Cover', 
+  labs( title='Lake Superior Mean Daily Ice Concentrationr', 
         subtitle='Year: {current_frame}',
         caption='Data: NOAA GLERL https://www.glerl.noaa.gov/data/ice/#historical',
-        x='Green line: Pre-1998 el Niño mean\nOrange line: Post-1998 el Niño mean',y='')+
+        x='Green line: Pre-1998 el Ni?o mean\nOrange line: Post-1998 el Ni?o mean',y='')+
   plot_theme +
   theme_bw()  +
   theme(legend.position=c(0.2,0.06), 
-        legend.direction="horizontal") +
-  geom_line(aes(x=jday, y=PreNino.jdaymean), color='seagreen', size=1)+ ##turn off this line if you don't want the mean lines 
-  geom_line(aes(x=jday, y=PostNino.jdaymean), color='orange1', size=1)  ##turn off this line if you don't want the mean lines
+        legend.direction="horizontal")  ##+
+#  geom_line(aes(x=Jday, y=PreNino.jdaymean), color='seagreen', size=1)+ ##turn off this line if you don't want the mean lines 
+#  geom_line(aes(x=Jday, y=PostNino.jdaymean), color='orange1', size=1)  ##turn off this line if you don't want the mean lines
 
 animate(p, end_pause=10, duration=70)
 anim_save(here('Plots and Tables/Ice_Temp','Animated_LS_Polar_Ice.gif'))
@@ -151,13 +156,13 @@ ggplot(ice.nino, aes(x=jday, y=mean.ice, color=nino))+
 
 
 ##area plot of daily ice cover across period of record
-ggplot(icenoaa4, aes(x=date1, y=IceCover))+
+ggplot(subset(ice, Year >= 1977), aes(x=Date, y=ice.cover))+
   geom_area()+
   geom_smooth()+
   plot_theme2+
   theme_bw()+
   scale_y_continuous(expand=c(0,0))+
-  labs(x='Date', y='Percent lakewide ice cover', title='Lake Superior Mean Daily Ice Cover', 
+  labs(x='Date', y='Percent lakewide ice cover', title='Lake Superior Daily Ice Concentration', 
        caption='Data: NOAA GLERL https://www.glerl.noaa.gov/data/ice/#historical')
 
 ggsave(here('Plots and Tables/Ice_temp','LS_Daily_IceFit.png'), dpi = 300, width = 20, height = 10, units = "cm") 
@@ -190,14 +195,18 @@ ggsave(here('Plots and Tables/Ice_Temp','LS_CummIce_Recruitment.png'), dpi = 300
 
 
 ##n days >20% by year
-ice20<-subset(icenoaa4, IceCover>=20) ##if you want a number other than 20%, change it here
-ice20<-aggregate(ice20$jday, by=list(ice.yr=ice20$ice.yr), FUN=length)%>%
+age1<-read_xlsx(here('Plots and Tables/RVCAT','export_age1_annual_summary.xlsx'), sheet = 1) %>%
+  mutate(ice.year = year.class) %>%
+  select(c(2,4, 10))
+
+
+ice20<-subset(ice, ice.cover>=20) ##if you want a number other than 20%, change it here
+ice20<-aggregate(ice20$Jday, by=list(ice.year=ice20$ice.year), FUN=length)%>%
   renameCol('x','n.days')
 
 ice20<-merge.data.frame(ice20, age1)
 ice20$recruitment<-cut(ice20$Cisco, breaks=c(-1,10,50,100,200,1000), labels=c('0-10','10-50','50-100','100-200','>200'))
-
-ggplot(ice20, aes(x=ice.yr, y=n.days, fill=recruitment))+
+ggplot(ice20, aes(x=ice.year, y=n.days, fill=recruitment))+
   geom_bar(stat='identity')+
   plot_theme2+
   theme_bw()+
@@ -208,6 +217,7 @@ ggplot(ice20, aes(x=ice.yr, y=n.days, fill=recruitment))+
   scale_fill_viridis(discrete=T, name='Age-1 cisco abundance\n(number/ha)')
 
 ggsave(here('Plots and Tables/Ice_Temp','LS_20PercIceDays_Recruitment.png'), dpi = 300, width = 20, height = 10, units = "cm") 
+
 
 ######################################################################################################################
 ###Annual Ice Cover for today (JDAY) for each year
@@ -225,22 +235,22 @@ jdaytoday = day(x)
 jdaytoday = 40
 
 ###Subset the data to only that day - JDay and then add data for this year
-icetoday<-subset(icenoaa2, jday == jdaytoday)
+icetoday<-subset(ice, Jday == jdaytoday)
 
 ##Add row for this year's data that might not be in GLERL data set
-icetoday2<-add_row(icetoday, jday = jdaytoday, Year = 'X2020', IceCover = 1.4, Yr = 2020)
+icetoday2<-add_row(icetoday, Jday = jdaytoday, Year = 2022, IceCover = 1.4)
 
 image = here('Plots and Tables/Ice_Temp','snowflake.png')
 
-ggplot(icetoday2, aes(x=Yr, y=IceCover)) +
+ggplot(icetoday2, aes(x=Year, y=IceCover)) +
   geom_image(aes(image=image), size= 0.05) +
-  geom_segment(aes(x=Yr, xend=Yr, y=0, yend=IceCover), size=1, color='black')+
+  geom_segment(aes(x=Year, xend=Year, y=0, yend=IceCover), size=1, color='black')+
   geom_smooth(se = FALSE, size = 1.5, span = 0.5) +
   geom_smooth(method=lm, se = FALSE, colour='red') +
   plot_theme2 +
   labs(x='Ice year', y='% of total lake area', title='Lake Superior Historical Ice Cover for January',
        caption='Data: NOAA GLERL https://www.glerl.noaa.gov/data/ice/#historical')+
-  scale_x_continuous(expand=c(0,0), limits=c(1970,max(icetoday2$Yr+1)), breaks=seq(1970,max(icetoday2$Yr+1), by=5))+
+  scale_x_continuous(expand=c(0,0), limits=c(1970,max(icetoday2$Year+1)), breaks=seq(1970,max(icetoday2$Year+1), by=5))+
   scale_y_continuous(expand=c(0,0),breaks = scales::pretty_breaks(4), limits=c(0,100)) +
   coord_cartesian(clip='off')+
   geom_hline(yintercept=0, color='black', size=1)
@@ -255,9 +265,9 @@ ggplot(icetoday2, aes(x=Yr, y=IceCover)) +
   ##put this value in for IceCover = in the add_row function below
   ##in add_row function change Year and Yr fields as needed
   
-  icemax<-icenoaa2 %>%
-    group_by(Yr) %>%
-    slice(which.max(IceCover))
+  icemax<-ice %>%
+    group_by(Year) %>%
+    slice(which.max(ice.cover))
   
   
   ##Add row for this year's data that might not be in GLERL data set
@@ -265,15 +275,15 @@ ggplot(icetoday2, aes(x=Yr, y=IceCover)) +
   
   image = here('Plots and Tables/Ice_Temp','snowflake.png')
   
-  ggplot(icemax, aes(x=Yr, y=jday)) +
+  ggplot(icemax, aes(x=Year, y=Jday)) +
     geom_image(aes(image=image), size= 0.05) +
-    geom_segment(aes(x=Yr, xend=Yr, y=0, yend=jday), size=1, color='black')+
+    geom_segment(aes(x=Year, xend=Year, y=0, yend=Jday), size=1, color='black')+
     geom_smooth(se = FALSE, size = 1.5, span = 0.5) +
     geom_smooth(method=lm, se = FALSE, colour='red') +
     plot_theme2 +
-    labs(x='Ice year', y='Date of maximum ice cover (Julian day)', title='Lake Superior Day of Maximum Ice Cover',
+    labs(x='Ice year', y='Date of maximum ice concentration (Julian day)', title='Lake Superior Day of Maximum Ice Cover',
          caption='Data: NOAA GLERL https://www.glerl.noaa.gov/data/ice/#historical')+
-    scale_x_continuous(expand=c(0,0), limits=c(1970,max(icetoday2$Yr+1)), breaks=seq(1970,max(icetoday2$Yr+1), by=5))+
+    scale_x_continuous(expand=c(0,0), limits=c(1970,max(icetoday2$Year+1)), breaks=seq(1970,max(icetoday2$Year+1), by=5))+
     scale_y_continuous(expand=c(0,0),breaks = scales::pretty_breaks(4), limits=c(0,100)) +
     coord_cartesian(clip='off')+
     geom_hline(yintercept=0, color='black', size=1)
@@ -282,15 +292,15 @@ ggplot(icetoday2, aes(x=Yr, y=IceCover)) +
   
 
 ##Max annual ice plot
-    ggplot(icemax, aes(x=Yr, y=IceCover)) +
+    ggplot(icemax, aes(x=ice.year, y=ice.cover)) +
     geom_image(aes(image=image), size= 0.05) +
-    geom_segment(aes(x=Yr, xend=Yr, y=0, yend=IceCover), size=1, color='black')+
+    geom_segment(aes(x=ice.year, xend=ice.year, y=0, yend=ice.cover), size=1, color='black')+
     geom_smooth(se = FALSE, size = 1.5, span = 0.5) +
     geom_smooth(method=lm, se = FALSE, colour='red') +
     plot_theme2 +
-    labs(x='Ice year', y='% of total lake area', title='Lake Superior Maximum Annual Ice Cover',
+    labs(x='Ice year', y='% of total lake area', title='Lake Superior Maximum Annual Ice Concentration',
          caption='Data: NOAA GLERL https://www.glerl.noaa.gov/data/ice/#historical')+
-    scale_x_continuous(expand=c(0,0), limits=c(1970,max(icetoday2$Yr+1)), breaks=seq(1970,max(icetoday2$Yr+1), by=5))+
+    scale_x_continuous(expand=c(0,0), limits=c(1970,max(icemax$ice.year+1)), breaks=seq(1970,max(icemax$ice.year+1), by=5))+
     scale_y_continuous(expand=c(0,0),breaks = scales::pretty_breaks(4), limits=c(0,100)) +
     coord_cartesian(clip='off')+
     geom_hline(yintercept=0, color='black', size=1)
@@ -307,7 +317,7 @@ ggplot(icetoday2, aes(x=Yr, y=IceCover)) +
 ##need to download data for current year and append to Excel file
 
     
-temp<-read.xlsx(here('Data','LS_GLERL_WTemp.xlsx'), sheetIndex = 'GLERL')
+temp<-read_xlsx(here('Data','LS_GLERL_WTemp.xlsx'), sheet = 'GLERL')
 
  temp <- temp %>%
   pivot_longer(3:8, names_to = "lake", values_to = "temperature") 
@@ -360,7 +370,7 @@ p<-ggplot(temp3, aes(x=jday, y=temperature, color=temperature))+
                                                                                                      'Oct','Nov','Dec'))+
   labs( title='Lake Superior Average Daily Surface Water Temperature', 
         subtitle='Year: {current_frame}',
-        caption='Data: NOAA, coastwatch.glerl.noaa.gov/statistic/statistic.html\nGreen line: pre-1998 el Niño mean\nOrange line: post-1998 el Niño mean',x='',y='')+
+        caption='Data: NOAA, coastwatch.glerl.noaa.gov/statistic/statistic.html\nGreen line: pre-1998 el Ni?o mean\nOrange line: post-1998 el Ni?o mean',x='',y='')+
   plot_theme +
   theme_bw()  +
   theme(legend.position=c(0.15,-0.08), 

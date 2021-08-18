@@ -2,9 +2,6 @@
 ## Load packages
 ## ===========================================================
 library(tidyverse)
-library(tidyr)
-library(dplyr)
-library(plyr)
 library(ggplot2)
 library(readxl)
 library(tibble)
@@ -37,7 +34,7 @@ options(scipen=999)
 Prey <- read_excel(here('Data',"LSBS_Stomach_Contents.xlsx"), sheet ="RawData") 
 
 #select needed columns
-Prey1 <- select(Prey, Predator, Fish, Year, Prey1, Prey3, PRLength_mm, PRWeight_g, PreySize_mm, PreyWT_g)
+Prey1 <- select(Prey, Predator, Sex, Year, Prey1, Prey2, Prey3, PRLength_mm, PRWeight_g, PreySize_mm, PreyWT_g)
 Prey1<-renameCol(Prey1, 'Prey1','PreyClass')
 Prey1<-renameCol(Prey1, 'Prey3','PreyGroup')
 Prey1$SizeGroup<-cut(Prey1$PRLength_mm, breaks=c(0,99,199,299,399,499,599,699,1000), labels=c('<100','100-200','200-300','300-400','400-500','500-600',

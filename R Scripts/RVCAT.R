@@ -22,7 +22,8 @@ library(here)
 library(scales)
 library(scatterpie)
 library(tidyquant) ##to calculate skewness
-
+library(broom)
+library(maptools)
 
 ##load the raw RVCAT data file
 ##NOTE: this code is designed to process the ENTIRE RVCAT output, you can subset out target codes, species, years, etc later
@@ -94,10 +95,19 @@ raw.data <- raw.data %>%
       TR_DESIGN == 27 | TR_DESIGN == 44 ~ END_DEPTH, 
      TR_DESIGN == 21 | TR_DESIGN == 22 | TR_DESIGN == 28 | TR_DESIGN == 41 |
       TR_DESIGN == 45  ~ FISHING_DEPTH))
-    
+
+##add country based on states
+raw.data <- raw.data %>%
+  mutate(Country = case_when(
+    STATE == 'WI'  ~ "USA", 
+    STATE == 'MN'  ~ "USA", 
+    STATE == 'MI'  ~ "USA", 
+    STATE == 'E'  ~ "Canada",
+    STATE == 'W'  ~ "Canada"))
+  
 ##load the species names file for when needed
 codes.to.names<-read_xlsx(here('Data','Species_Taxonomy.xlsx'))
-sci.names<-select(codes.to.names, c(1:3))
+sci.names<-select(codes.to.names, c(1:3,8,10))
 
 ###################################################################################
 ## to calculate NOHA and KGHA, need to subset out different vessels and trawl designs,
@@ -113,6 +123,18 @@ sci.names<-select(codes.to.names, c(1:3))
 ## TR_DESIGNS == 41 - 100 foot bag seine
 ## TR_DESIGNS == 44 - 10 foot beam trawl, bottom trawl
 ## TR_DESIGNS == 45 - 50 foot bag seine
+
+## Vessel codes in the dataset
+## Vessel == 1 - Siscowet
+## Vessel == 4 - Kaho
+## Vessel == 11 - Grayling
+## Vessel == 99 - Coaster
+## Vessel == 92 - Jon Boat
+## Vessel == 50 - Whitefish
+## Vessel == 25 - Kiyi
+## Vessel == 9 - Daphnia
+## Vessel == 95 - Northern Shoveler, FWS boat
+## Vessel == 37 - Arcticus 
 
 ## for KGHA, weight is converted from grams to kg and then KG per ha are calculated
 
@@ -258,6 +280,14 @@ daphnia <- raw.data %>%
          NOHA = NUM/HA_SWEPT,
          KGHA = (WT*.001)/HA_SWEPT)
 
+##r/v Arcticus - 39 foot bottom trawls
+arcticus_tr4_25 <- raw.data %>% 
+  subset(VESSEL==37 & TR_DESIGN == 4 |  VESSEL==37 & TR_DESIGN == 25) %>% 
+  mutate(HA_SWEPT = ((DISTANCE*5280)*25.49)/107639.1, 
+         NOHA = NUM/HA_SWEPT,
+         KGHA = (WT*.001)/HA_SWEPT)
+
+
 ########################################################################################
 ##bind all data frames together now that they have HA_SWEPT, NOHA and KGHA
 
@@ -279,7 +309,8 @@ all.data <- bind_rows(siscowet_76_tr4,
             kiyi_tr4_25,
             kiyi_tr44,
             kiyi_tr21_28,
-            daphnia)
+            daphnia, 
+            arcticus_tr4_25)
 
 ##check that the number of rows in all.data matches the number in the raw.data input to make sure no data got lost along the way
 ##if data were lost, were any additional vessels used that are not listed above? any vessel codes changed or recorded incorrectly?
@@ -294,7 +325,7 @@ map_theme<-theme(axis.text=element_text(size=20, family='serif'),
                  plot.caption=element_text(size=16, family='serif'), 
                  legend.position=c(0.1,0.7),
                  legend.title=element_text(size=20, family='serif'),
-                 legend.text=element_text(size=16, family='serif'))
+                 legend.text=element_text(size=20, family='serif'))
 
 plot_theme<-theme(axis.line=element_line(size=1, color='black'),
                   panel.background = element_rect(NA),
@@ -315,22 +346,53 @@ ann_data_access<-'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0'
 
 ####################################################################################################################NEARSHORE DATA####
 ###Miscellaneous small data requests
-##sl <- subset(all.data, SPECIES == 5)
 
-##pig<-all.data %>%
-##  distinct(all.data, OP_ID)
+sites <- all.data %>%
+  subset(YEAR >=2010 & TARGET == 2) %>%
+  select(OP_ID, OP_DATE, YEAR, LOCATION, BEG_LATITUDE_DD, END_LATITUDE_DD, BEG_LONGITUDE_DD, END_LONGITUDE_DD, 
+         BEG_DEPTH, END_DEPTH, M_UNIT) %>%
+  distinct(OP_ID, .keep_all = TRUE) %>%
+  group_by(LOCATION) %>%
+  summarise(Beg.Lat = mean(BEG_LATITUDE_DD), Beg.Long = mean(BEG_LONGITUDE_DD), 
+            End.Lat = mean(END_LATITUDE_DD), End.Long = mean(END_LONGITUDE_DD),
+            Beg.Depth_m = mean(BEG_DEPTH), End.Depth_m = mean(END_DEPTH), 
+            Min.Beg.Lat = min(BEG_LATITUDE_DD), Min.Beg.Long = min(BEG_LONGITUDE_DD), 
+            Min.End.Lat = min(END_LATITUDE_DD), Min.End.Long = min(END_LONGITUDE_DD),
+            Max.Beg.Lat = max(BEG_LATITUDE_DD), Max.Beg.Long = max(BEG_LONGITUDE_DD), 
+            Max.End.Lat = max(END_LATITUDE_DD), Max.End.Long = max(END_LONGITUDE_DD),
+            Diff.Beg.Lat = Max.Beg.Lat-Min.Beg.Lat, Diff.Beg.Long = Max.Beg.Long-Min.Beg.Long, 
+            Diff.End.Lat = Max.End.Lat-Min.End.Lat, Diff.End.Long = Max.End.Long-Min.End.Long)
 
+openxlsx::write.xlsx(sites, here('Plots and Tables/RVCAT','export_ns_sites.xlsx'))
 
-##ggplot(sl, aes(x=YEAR, y=NUM))+
-##  geom_bar(stat='identity', fill='grey75', color='black')+
-##  scale_x_continuous(breaks = pretty_breaks()) +
-##  scale_y_continuous(expand=c(0,0)) +
-##  plot_theme+
-##  labs(x='Year', y='Count',caption=ann_data_access,
-##       title='Lake Superior Sea Lamprey Catches',
-##       subtitle='USGS bottom trawl assessments') 
+#sites1 <- all.data %>%
+#  subset(LOCATION == 454 & YEAR >=2010 & TARGET == 2) %>%
+#  distinct(OP_ID, .keep_all = TRUE) %>%
+#  select(OP_ID, OP_DATE, YEAR, LOCATION, BEG_LATITUDE_DD, END_LATITUDE_DD, BEG_LONGITUDE_DD, END_LONGITUDE_DD, 
+#       BEG_DEPTH, END_DEPTH, M_UNIT)
+  
+#ggplot(subset(all.data, SPECIES == 5), aes(x=YEAR, y=NUM))+
+#  geom_bar(stat='identity', fill='grey75', color='black')+
+#  scale_x_continuous(breaks = pretty_breaks()) +
+#  scale_y_continuous(expand=c(0,0), breaks = pretty_breaks()) +
+#  plot_theme+
+#  labs(x='Year', y='Count',caption=ann_data_access,
+#       title='Lake Superior Sea Lamprey Catches',
+#       subtitle='USGS bottom trawl assessments') 
 
 ##ggsave(here('Plots and Tables/RVCAT','PigPlot.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
+#ggplot(subset(all.data, SPECIES == 109), aes(x=END_DEPTH, y=NUM)) +
+#  geom_point(stat='identity', fill='grey75', color='black')+
+#  scale_x_continuous(breaks = pretty_breaks()) +
+#  scale_y_continuous(expand=c(0,0),breaks = pretty_breaks()) +
+#  plot_theme+
+#  labs(x='Depth of capture (m)', y='Count',caption=ann_data_access,
+#       title='Lake Superior Rainbow Smelt Catches',
+#       subtitle='USGS bottom trawl assessments, 1963-2020') 
+
+#ggsave(here('Plots and Tables/RVCAT','RBS_depthofcapture_count.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
 
 ###########################################################################################
@@ -341,21 +403,27 @@ ann_data_access<-'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0'
 sci.names$SPECIES<-as.factor(sci.names$SPECIES)
 
 export.ns.os <- all.data %>%
-  select(OP_ID,OP_DATE,YEAR,TIME,TARGET,TR_DESIGN,M_UNIT,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+  select(OP_ID,OP_DATE,YEAR,TIME,TARGET,TR_DESIGN,M_UNIT,Country,LOCATION,Mid.Lat.DD,Mid.Long.DD,
          BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
          DISTANCE,HA_SWEPT,SPECIES,NUM,NOHA,KGHA) %>%
-  subset(YEAR >= 1974) %>% 
+  subset(YEAR >= 1978) %>% 
   subset(TARGET==2 | TARGET==118 | TARGET==117 & YEAR>2010 & END_DEPTH>84) %>% 
   subset(TR_DESIGN==25 | TR_DESIGN==4) %>%
-#  subset(M_UNIT == "WI2") %>% 
+  ##subset(M_UNIT == "WI2") %>% 
+  subset(Country == "USA") %>% 
   mutate(survey = str_replace_all(TARGET, c("2" = "nearshore", "117" = "offshore", 
                                             "118" = "offshore"))) %>%
   left_join(sci.names)
 
+export.station.survey <-export.ns.os %>%
+  select(LOCATION,survey) %>%
+  distinct(LOCATION, .keep_all = TRUE)
+
+
 export.Catch.NoZeros <- export.ns.os %>%
-  select(OP_ID,survey,OP_DATE,TIME,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+  select(OP_ID,survey,OP_DATE,TIME,M_UNIT,LOCATION,Mid.Lat.DD,Mid.Long.DD,
          BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
-         DISTANCE,HA_SWEPT,SPECIES,COMMON_NAME,SCIENTIFIC_NAME,NUM,NOHA,KGHA) %>%
+         DISTANCE,HA_SWEPT,SPECIES,COMMON_NAME,SCIENTIFIC_NAME,TYPE,DIET,NUM,NOHA,KGHA) %>%
   mutate(TRAWL_TYPE = "Bottom trawl") 
 
 ##If weights were NOT taken replace KGHA with 'na'
@@ -363,7 +431,7 @@ export.Catch.NoZeros$KGHA[export.Catch.NoZeros$KGHA == 0 & export.Catch.NoZeros$
 
 ##Pull out all individual trawls
 export.trawls<-export.ns.os  %>%
-  select(OP_ID,OP_DATE,TIME,survey, YEAR,LOCATION,TOW_TIME,DISTANCE,HA_SWEPT,
+  select(OP_ID,OP_DATE,TIME,survey, YEAR,M_UNIT,LOCATION,TOW_TIME,DISTANCE,HA_SWEPT,
          BEG_DEPTH,END_DEPTH,Mid.Lat.DD, Mid.Long.DD,Surface.Temp,Bottom.Temp) %>%
   distinct(OP_ID, .keep_all = TRUE)
 
@@ -386,9 +454,9 @@ export.trawls.zeros.allspecies <- export.trawls.zeros.allspecies %>%
   left_join(sci.names) 
 
 export.Catch.Zeros <- export.trawls.zeros.allspecies %>%
-  select(OP_ID,survey,OP_DATE,TIME,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+  select(OP_ID,survey,OP_DATE,TIME,M_UNIT,LOCATION,Mid.Lat.DD,Mid.Long.DD,
          BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
-         DISTANCE,HA_SWEPT,SPECIES,COMMON_NAME,SCIENTIFIC_NAME,NUM,NOHA,KGHA) %>%
+         DISTANCE,HA_SWEPT,SPECIES,COMMON_NAME,SCIENTIFIC_NAME,TYPE,DIET,NUM,NOHA,KGHA) %>%
   mutate(TRAWL_TYPE = "Bottom trawl")
 
 ##If weights were NOT taken replace KGHA with 'na'
@@ -398,9 +466,9 @@ export.Catch.Zeros$KGHA[export.Catch.Zeros$KGHA == 0 & export.Catch.Zeros$NUM >0
 export.Catch.Zeros <- export.Catch.Zeros %>%
   left_join(export.tfish.trawls) %>%
   subset(SPECIES == 0 & Tfish ==0 | Tfish >0 & SPECIES !=0) %>%
-  select(OP_ID,survey,OP_DATE,TIME,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+  select(OP_ID,survey,OP_DATE,TIME,M_UNIT,LOCATION,Mid.Lat.DD,Mid.Long.DD,
          BEG_DEPTH,END_DEPTH,Surface.Temp,Bottom.Temp, TOW_TIME, 
-         DISTANCE,HA_SWEPT,SPECIES,COMMON_NAME,SCIENTIFIC_NAME,NUM,NOHA,KGHA,TRAWL_TYPE)
+         DISTANCE,HA_SWEPT,SPECIES,COMMON_NAME,SCIENTIFIC_NAME,TYPE,DIET,NUM,NOHA,KGHA,TRAWL_TYPE)
 
 ##Calculate total number of species caught that year
 export.annual.total.fish <- export.trawls.zeros.allspecies %>% 
@@ -409,12 +477,46 @@ export.annual.total.fish <- export.trawls.zeros.allspecies %>%
   distinct(SPECIES) %>%
   summarise(fishes.total = n())
 
+##Sum KGHA for native and exotic species
+export.trawls.sum.type<- export.ns.os %>%
+  select(OP_ID,TYPE, KGHA) %>%
+  group_by(OP_ID, TYPE) %>%
+  summarise(TYPE.KGHA = sum(KGHA)) %>%
+  pivot_wider(names_from = TYPE, values_from = TYPE.KGHA, values_fill = 0) %>%
+  renameCol('native', 'native.KGHA') %>%
+  renameCol('exotic', 'exotic.KGHA') 
+  
+##Sum KGHA for prey and predator
+export.trawls.sum.diet<- export.ns.os %>%
+  select(OP_ID,DIET, KGHA) %>%
+  group_by(OP_ID, DIET) %>%
+  summarise(DIET.KGHA = sum(KGHA)) %>%
+  pivot_wider(names_from = DIET, values_from = DIET.KGHA, values_fill = 0) %>%
+  renameCol('prey', 'prey.KGHA') %>%
+  renameCol('predator', 'predator.KGHA') 
+  
+
+##Sum KGHA for prey and predator by native and exotic
+export.trawls.sum.type.diet<- export.ns.os %>%
+  select(OP_ID, TYPE, DIET, KGHA) %>%
+  mutate(type_diet = paste(TYPE, DIET, sep = ".")) %>%
+  group_by(OP_ID, type_diet) %>%
+  summarise(TYPE.DIET.KGHA = sum(KGHA)) %>%
+  pivot_wider(names_from = type_diet, values_from = TYPE.DIET.KGHA, values_fill = 0) %>%
+  renameCol('native.prey', 'native.prey.KGHA') %>%
+  renameCol('native.predator', 'native.predator.KGHA') %>%
+  renameCol('exotic.prey', 'exotic.prey.KGHA') %>%
+  renameCol('exotic.predator', 'exotic.predator.KGHA')
+
 ##Sum KGHA and NOHA across all species to get total biomass and total number per ha
 export.trawls.sum<- export.ns.os %>%
   select(OP_ID,NUM,NOHA,KGHA) %>%
   group_by(OP_ID) %>%
   summarise(KGHA = sum(KGHA), NUM=sum(NUM), NOHA = SUM(NOHA), Fishes = n()) %>%
   left_join(export.trawls) %>% 
+  left_join(export.trawls.sum.type) %>%
+  left_join(export.trawls.sum.diet) %>%
+  left_join(export.trawls.sum.type.diet) %>%
   mutate(Fishes = replace(Fishes, NOHA == 0, 0))
 
 ##calculate summary stats by year
@@ -429,11 +531,15 @@ export.annual.sum <- export.trawls.sum %>%
             median.enddepth=median(END_DEPTH), min.enddepth=min(END_DEPTH), max.enddepth=max(END_DEPTH),
             mean.surface.temp=mean(Surface.Temp), min.surface.temp=min(Surface.Temp), max.surface.temp=max(Surface.Temp),
             mean.bottom.temp=mean(Bottom.Temp), min.bottom.temp=min(Bottom.Temp), max.bottom.temp=max(Bottom.Temp),
-            mean.kg=mean(KGHA), median.kg = median(KGHA), sd.kg = sd(KGHA), 
-            std.error.kg = std.error(KGHA), skewness.kg=skewness(KGHA),
-            min.kg=min(KGHA), max.kg = max(KGHA),
-            mean.num=mean(NOHA), median.num = median(NOHA), sd.num = sd(NOHA), 
-            std.error.num = std.error(NOHA), skewness.num=skewness(NOHA),
+            mean.kgha=mean(KGHA), median.kgha = median(KGHA), 
+            sd.kgha = sd(KGHA), std.error.kgha = std.error(KGHA), skewness.kgha=skewness(KGHA),
+            min.kgha=min(KGHA), max.kgha = max(KGHA),
+            mean.native.kgha=mean(native.KGHA), mean.exotic.kgha=mean(exotic.KGHA), 
+            mean.prey.kgha=mean(prey.KGHA), mean.predator.kgha=mean(predator.KGHA), 
+            mean.native.prey.kgha=mean(native.prey.KGHA), mean.exotic.prey.kgha=mean(exotic.prey.KGHA), 
+            mean.native.predator.kgha=mean(native.predator.KGHA), mean.exotic.predator.kgha=mean(exotic.predator.KGHA), 
+            mean.noha=mean(NOHA), median.noha = median(NOHA), sd.noha = sd(NOHA), 
+            std.error.noha = std.error(NOHA), skewness.noha=skewness(NOHA),
             sum.num=sum(NUM),
             fishes.mean = mean(Fishes), fishes.median = median(Fishes), 
             fishes.min = min(Fishes), fishes.max = max(Fishes)) %>%
@@ -472,26 +578,43 @@ export.annual.ns.species.sum <- export.trawls.zeros.allspecies %>%
            SPECIES == 203 |
            SPECIES == 204 |
            SPECIES == 307 |
+           SPECIES == 308 |
            SPECIES == 317 |
            SPECIES == 127 |
            SPECIES == 902 |
            SPECIES == 903 |
-           SPECIES == 904) %>%
+           SPECIES == 904 | 
+           SPECIES == 130 | 
+           SPECIES == 131 | 
+           SPECIES == 404 |
+           SPECIES == 211 |
+           SPECIES == 212 |
+           SPECIES == 206 |
+           SPECIES == 207 |
+           SPECIES == 210 |
+           SPECIES == 217 |
+           SPECIES == 106 |
+           SPECIES == 805 |
+           SPECIES == 129 |
+           SPECIES == 508) %>%
   group_by(YEAR,COMMON_NAME) %>% 
-  summarise(mean.kg=mean(KGHA)) %>%
-  pivot_wider(names_from = COMMON_NAME, values_from = mean.kg, values_fill = 0) %>%
+  summarise(mean.kgha=mean(KGHA)) %>%
+  pivot_wider(names_from = COMMON_NAME, values_from = mean.kgha, values_fill = 0) %>%
   ungroup()
 
 export.annual.ns.table <- export.annual.sum %>%
   subset(survey == 'nearshore') %>%
   left_join(export.annual.ns.species.sum) %>%
-select(YEAR, locations, sites.zerofish, mean.kg, median.kg, fishes.mean, fishes.total,
-         "Bloater", "Cisco", "Lake Whitefish", "Rainbow Smelt", 
-         "hatchery Lake Trout", "lean Lake Trout", "Burbot",
-         "Slimy Sculpin", "Spoonhead Sculpin", "Deepwater Sculpin") %>%
+  select(YEAR, locations, sites.zerofish, mean.kgha, median.kgha, fishes.mean, fishes.total,
+       "Bloater", "Cisco", "Lake Whitefish", "Rainbow Smelt", 
+       "hatchery Lake Trout", "lean Lake Trout", "siscowet Lake Trout", "Burbot",
+       "Slimy Sculpin", "Spoonhead Sculpin", "Deepwater Sculpin", "Ninespine Stickleback", 
+       "Trout-Perch", "Longnose Sucker", "Pygmy Whitefish", "Round Whitefish", "Kiyi", 
+       "Blackfin Cisco", "Shortjaw Cisco", "Unidentified Coregonid", 
+       "Alewife", "Ruffe", "Threespine Stickleback", "Spottail Shiner") %>%
   ungroup() %>%
-  mutate(all_sculpins = rowSums(.[15:17])) %>%
-  mutate(misc_species = mean.kg - rowSums(.[8:17])) 
+  mutate(all_sculpins = rowSums(.[16:18])) %>%
+  mutate(other_species = mean.kgha - rowSums(.[8:30]) - all_sculpins) 
 
 ##Offshore annual Biomass summary Table for export
 export.annual.os.species.sum <- export.trawls.zeros.allspecies %>%
@@ -501,13 +624,13 @@ export.annual.os.species.sum <- export.trawls.zeros.allspecies %>%
            SPECIES == 308 |
            SPECIES == 904) %>%
   group_by(YEAR,COMMON_NAME) %>% 
-  summarise(mean.kg=mean(KGHA)) %>%
-  pivot_wider(names_from = COMMON_NAME, values_from = mean.kg) 
+  summarise(mean.kgha=mean(KGHA)) %>%
+  pivot_wider(names_from = COMMON_NAME, values_from = mean.kgha) 
 
 export.annual.os.table <- export.annual.sum %>%
   subset(survey == 'offshore') %>%
   left_join(export.annual.os.species.sum) %>%
-  select(YEAR, locations, sites.zerofish, mean.kg, fishes.mean, fishes.total,
+  select(YEAR, locations, sites.zerofish, mean.kgha, fishes.mean, fishes.total,
          "Kiyi", "siscowet Lake Trout", "Deepwater Sculpin")
 
 
@@ -520,9 +643,48 @@ export.annual.catch <- export.trawls.zeros.allspecies %>%
   pivot_wider(names_from = survey, values_from = catch, values_fill = 0) %>%
   ungroup() %>%
   left_join(sci.names) %>%
-  select(COMMON_NAME,SCIENTIFIC_NAME, nearshore, offshore) 
+  select(COMMON_NAME,SCIENTIFIC_NAME, nearshore) 
+##select(COMMON_NAME,SCIENTIFIC_NAME, nearshore, offshore) 
+
+##list of species caught by survey including number of individuals, NOHA, and KGHA for a particular year, usually max(YEAR)
+export.annual.stats.byspecies <- export.trawls.zeros.allspecies %>%
+  select(OP_ID, YEAR, survey, SPECIES, NUM, NOHA, KGHA) %>%
+  subset(YEAR == max(YEAR)) %>%
+  group_by(SPECIES,survey) %>% 
+  summarise(sites.occur =  sum(NUM>=1), 
+            catch.total = sum(NUM), catch.max = max(NUM), catch.min = min(NUM), catch.mean = mean(NUM),
+            NOHA.max = max(NOHA), NOHA.min = min(NOHA), NOHA.mean = mean(NOHA),
+            KGHA.max = max(KGHA), KGHA.min = min(KGHA), KGHA.mean = mean(KGHA)) %>%
+  ungroup() %>%
+  subset(catch.total >0)  %>%
+  left_join(sci.names)
   
-  
+
+##Biomass Summary By Nearshore and Offshore Stations for period of record
+export.station.sum <- export.trawls.sum %>%
+  group_by(LOCATION) %>% 
+  summarise(Years=n(), 
+            min.year=min(YEAR), max.year=max(YEAR), 
+            median.begdepth=median(BEG_DEPTH), min.begdepth=min(BEG_DEPTH), max.begdepth=max(BEG_DEPTH),
+            median.enddepth=median(END_DEPTH), min.enddepth=min(END_DEPTH), max.enddepth=max(END_DEPTH),
+            mean.surface.temp=mean(Surface.Temp), min.surface.temp=min(Surface.Temp), max.surface.temp=max(Surface.Temp),
+            mean.bottom.temp=mean(Bottom.Temp), min.bottom.temp=min(Bottom.Temp), max.bottom.temp=max(Bottom.Temp),
+            mean.kgha=mean(KGHA), median.kgha = median(KGHA), 
+            sd.kgha = sd(KGHA), std.error.kgha = std.error(KGHA), skewness.kgha=skewness(KGHA),
+            min.kgha=min(KGHA), max.kgha = max(KGHA),
+            mean.native.kgha=mean(native.KGHA), mean.exotic.kgha=mean(exotic.KGHA), 
+            mean.prey.kgha=mean(prey.KGHA), mean.predator.kgha=mean(predator.KGHA), 
+            mean.native.prey.kgha=mean(native.prey.KGHA), mean.exotic.prey.kgha=mean(exotic.prey.KGHA), 
+            mean.native.predator.kgha=mean(native.predator.KGHA), mean.exotic.predator.kgha=mean(exotic.predator.KGHA), 
+            mean.noha=mean(NOHA), median.noha = median(NOHA), sd.noha = sd(NOHA), 
+            std.error.noha = std.error(NOHA), skewness.noha=skewness(NOHA),
+            sum.num=sum(NUM),
+            fishes.mean = mean(Fishes), fishes.median = median(Fishes), 
+            fishes.min = min(Fishes), fishes.max = max(Fishes)) %>%
+  left_join(export.station.survey) %>%
+  ungroup()
+
+
 ##### Age-1 abundance table ################################################################
 ############################################################################################
 ##Lengths file to evaluate Age-1 densities##################################################
@@ -533,6 +695,23 @@ lengths<-read.csv(here('Data','LENGTHS_RVCAT.csv')) %>%
 
 lengths$SPECIES<-as.factor(lengths$SPECIES)
 
+
+##Expanded age-1 length cutoffs to account for faster growth observed in 2021
+export.age1.ns.os <- export.trawls %>%
+  full_join(lengths) %>% 
+  subset(SPECIES == '109' & LENGTH <101 & survey == "nearshore" |
+           SPECIES == '202' & LENGTH <171 & survey == "nearshore" |
+           SPECIES == '204' & LENGTH <161 & survey == "nearshore" |
+           SPECIES == '203' & LENGTH <191 & survey == "nearshore" |
+           SPECIES == '317' & LENGTH <226 & survey == "nearshore" |
+           SPECIES == '308' & LENGTH <226 & survey == "offshore" |
+           SPECIES == '206' & LENGTH <161 & survey == "offshore") %>%
+  select(OP_ID,SPECIES,EXP_N) %>%
+  group_by(OP_ID,SPECIES) %>%
+  summarise(NUM = sum(EXP_N)) %>%
+  ungroup()
+
+###Traditional Age-1 length cutoffs
 export.age1.ns.os <- export.trawls %>%
   full_join(lengths) %>% 
   subset(SPECIES == '109' & LENGTH <101 & survey == "nearshore" |
@@ -572,7 +751,24 @@ export.age1.table <- export.age1.complete %>%
   mutate('Year class' = YEAR-1) %>%
   select(YEAR, 'Year class', COMMON_NAME, age1.mean) %>%
   pivot_wider(names_from = COMMON_NAME, values_from = age1.mean) %>%
-  round(1) 
+  round(2) 
+
+
+##list of nearshore and offshore sites
+export.ns.os.sites <- all.data %>%
+  select(OP_ID,OP_DATE,YEAR,TARGET,TR_DESIGN,M_UNIT,Country,LOCATION,Mid.Lat.DD,Mid.Long.DD,
+         BEG_DEPTH,END_DEPTH) %>%
+  subset(YEAR >= 1978) %>% 
+  subset(TARGET==2 | TARGET==118 | TARGET==117 & YEAR>2010 & END_DEPTH>84) %>% 
+  subset(TR_DESIGN==25 | TR_DESIGN==4) %>%
+  mutate(survey = str_replace_all(TARGET, c("2" = "nearshore", "117" = "offshore", 
+                                            "118" = "offshore"))) %>%
+  distinct(OP_ID, .keep_all = TRUE) %>%
+  group_by(LOCATION) %>%
+  summarise(Latitude = mean(Mid.Lat.DD), Longitude = mean(Mid.Long.DD)) %>%
+  left_join(all.data) %>%
+  select(LOCATION, M_UNIT, Country, Latitude, Longitude) %>%
+  distinct(LOCATION, .keep_all = TRUE)
   
 
 ##Export to Excel File
@@ -585,24 +781,75 @@ list.sheets<-list('Catch_NoZeros'=export.Catch.NoZeros,
                   'OS_table' = export.annual.os.table,
                   'Age1_Fish' = export.age1.table, 
                   'Catch_table' = export.annual.catch,
+                  'Catch_BySpecies' = export.annual.stats.byspecies,
+                  'ByStations' = export.station.sum, 
+                  'Locations' = export.ns.os.sites,
+                  'Species' = sci.names,
                   'MetaData'= metadata)
 
 openxlsx::write.xlsx(list.sheets, here('Plots and Tables/RVCAT','export_ns_os_all.xlsx'))
 
+
+
+###########################################################################################
+##DATA EXPORT NEARSHORE AND OFFSHORE DATA FOR LSTC FCO ANALYSES
+###########################################################################################
+
+##calculate summary stats by year
+export.fco.annual.sum <- export.annual.sum %>% 
+  select(YEAR, survey, locations,
+         mean.kgha, 
+         mean.native.kgha,
+         mean.exotic.kgha, 
+         mean.prey.kgha,
+         mean.predator.kgha, 
+         mean.native.prey.kgha,
+         mean.exotic.prey.kgha, 
+         mean.native.predator.kgha,
+         mean.exotic.predator.kgha) 
+         
+
+export.fco.age1.cisco <- export.age1.table %>% 
+  select(YEAR, Cisco)
+
+export.annual.catch.fco <- export.trawls.zeros.allspecies %>%
+  select(OP_ID, YEAR, survey, SPECIES, NUM) %>%
+  subset(NUM > 0) %>%
+  subset(SPECIES != 999) %>%
+  group_by(SPECIES,survey) %>% 
+  summarise(catch = sum(NUM)) %>% 
+  pivot_wider(names_from = survey, values_from = catch, values_fill = 0) %>%
+  ungroup() %>%
+  left_join(sci.names) %>%
+  select(COMMON_NAME,SCIENTIFIC_NAME, TYPE,DIET,nearshore, offshore) %>%
+  arrange(desc(nearshore))
+  
+
+
+##Export to Excel File
+##library(openxlsx)
+metadata<-read.xlsx(here('Data','LSTC_FCO_MetaData.xlsx'))
+list.sheets<-list('Biomass'=export.fco.annual.sum,
+                  'Age1_Cisco_Density' = export.fco.age1.cisco,
+                  'Catch' = export.annual.catch.fco)
+
+openxlsx::write.xlsx(list.sheets, here('Plots and Tables/RVCAT','LSTC_FCO.xlsx'))
+
 ##############################################################################################
 ##############################################################################################
-##############################################################################################
+
+###If you want to compare data only from a partcular Managemen Unit or State or Country do it now
+## ns<-filter(all.data, TARGET == 2 & YEAR>1977 & STATE== 'MN')
+##ns<-subset(all.data, TARGET == 2 & YEAR>1977 & M_UNIT == "WI2")
 
 ##pull out nearshore, TARGET = 2 data for a normal full survey year
 
-ns<-subset(all.data, TARGET==2 & YEAR >1977)
+##ns<-subset(all.data, TARGET==2 & YEAR >1977)
 
 ##ns<-subset(all.data, TARGET==2 & YEAR >1973 &  M_UNIT == "WI2")
 
-
-###If you want to compare data only from a partcular Managemen Unit or State do it now
-## ns<-filter(all.data, TARGET == 2 & YEAR>1977 & STATE== 'MN')
-##ns<-subset(all.data, TARGET == 2 & YEAR>1977 & M_UNIT == "WI2")
+ns<-subset(all.data, TARGET==2 & YEAR >1977 &  Country == "USA")
+  
 
 ##Pull out all individual nearshore trawls
 ns.trawls<-ns %>%
@@ -673,11 +920,16 @@ os<-subset(all.data, TARGET==118|TARGET==117 & YEAR>2010) %>%
   filter(TR_DESIGN==25|TR_DESIGN==4) %>%
   filter(END_DEPTH>84)
 
+
 ###If you want to compare data only from a particular Management Unit or State do it now
 ## os<-subset(filter(os, STATE== 'MN')
 ## os<-subset(os, M_UNIT == "WI2")
 
-##Pull out all individual nearshore trawls
+os<-subset(os, Country == 'USA')
+
+
+
+##Pull out all individual offshore trawls
 os.trawls<-os %>%
   select(OP_ID,SERIAL,TARGET,OP_DATE,YEAR,LOCATION,BEG_DEPTH,END_DEPTH,
          Mid.Lat.DD, Mid.Long.DD,Surface.Temp,Bottom.Temp,
@@ -711,7 +963,7 @@ os.trawls.sum<- os %>%
   mutate(Fishes = replace(Fishes, NOHA == 0, 0))
 
 
-##calculate summary stats for nearshore total biomass by year
+##calculate summary stats for offshore total biomass by year
 os.annual.sum <- os.trawls.sum %>% 
   group_by(YEAR) %>% 
   summarise(locations=n(), mean=mean(KGHA), median = median(KGHA), 
@@ -720,7 +972,7 @@ os.annual.sum <- os.trawls.sum %>%
             fishes.min = min(Fishes), fishes.max = max(Fishes)) 
 
 ##############################################################################
-##calculate annual nearshore summary stats by year, and species
+##calculate annual offshore summary stats by year, and species
 os.annual.sum.by.species <- os.trawls.all.species %>%
   group_by(YEAR, SPECIES) %>%
   summarise(mean = mean(KGHA), 
@@ -731,19 +983,268 @@ sci.names$SPECIES<-as.factor(sci.names$SPECIES)
 os.annual.sum.by.species <- os.annual.sum.by.species %>%
   left_join(sci.names)
 
+############################################################################
+############################################################################
+##Combine nearshore and offshore surveys for calculating depth zone weighted biomass
+ns.os <- all.data %>%
+  subset(TARGET==2 & YEAR >1977 | TARGET==118| TARGET==117 & YEAR>2010) %>%
+  filter(TR_DESIGN==25|TR_DESIGN==4) %>%
+  mutate(survey = str_replace_all(TARGET, c("2" = "nearshore", "117" = "offshore", 
+                                            "118" = "offshore"))) 
+
+ns.os.trawls<-ns.os %>%
+  select(OP_ID,SERIAL,TARGET,OP_DATE,YEAR,LOCATION,BEG_DEPTH,END_DEPTH,
+         Mid.Lat.DD, Mid.Long.DD,Surface.Temp,Bottom.Temp,
+         TR_DESIGN,DISTANCE,TOW_TIME,HA_SWEPT) %>%
+  distinct(OP_ID, .keep_all = TRUE)
+
+ns.os.trawls.all.species <- ns.os %>%
+  select(OP_ID,SPECIES, KGHA) 
+
+##add zeros for species not collected
+ns.os.trawls.all.species <-complete(ns.os.trawls.all.species, OP_ID, SPECIES, 
+                                 fill=list(KGHA=0)) %>%
+  left_join(ns.os.trawls) %>%
+  left_join(sci.names) %>%
+  mutate(Depth.Zone = case_when(
+           END_DEPTH <= 50 ~ "0-50 m", 
+           END_DEPTH > 50 & END_DEPTH <= 100 ~ "50-100 m",
+           END_DEPTH > 100 & END_DEPTH <= 150 ~ "100-150 m",
+           END_DEPTH > 150 & END_DEPTH <= 200 ~ "150-200 m",
+           END_DEPTH > 200 ~ ">200 m")) %>%
+  mutate(Depth.Zone.Area = case_when(
+  Depth.Zone == "0-50 m" ~ 1120599, 
+  Depth.Zone == "50-100 m" ~ 1065318, 
+  Depth.Zone == "100-150 m" ~ 1541944, 
+  Depth.Zone == "150-200 m" ~ 2210986, 
+  Depth.Zone == ">200 m" ~ 2158177)) 
+
+
+##get mean biomass for all species within depth zones 
+ns.os.dzone.species.sum <- ns.os.trawls.all.species %>%
+  select(OP_ID, TARGET, YEAR, SPECIES, COMMON_NAME, KGHA, Depth.Zone, Depth.Zone.Area) %>% 
+  group_by(YEAR, Depth.Zone, SPECIES) %>%
+  summarise(mean = mean(KGHA), locations = n()) %>%
+  ungroup()
+
+##get rid of predators, sum prey species to get total prey fish biomass
+ns.os.dzone.prey <- ns.os.trawls.all.species %>%
+  select(OP_ID, TARGET, YEAR, SPECIES, COMMON_NAME, KGHA, Depth.Zone, Depth.Zone.Area) %>% 
+  group_by(OP_ID) %>% 
+   ##remove piscivorus Lake trout and burbot
+  subset(SPECIES != 317 &  SPECIES != 307 & SPECIES != 308 & SPECIES != 127) %>% 
+  summarise(KGHA.Total = sum(KGHA)) %>%
+  ungroup() %>%
+  left_join(ns.os.trawls) %>%
+  mutate(Depth.Zone = case_when(
+    END_DEPTH <= 50 ~ "0-50 m", 
+    END_DEPTH > 50 & END_DEPTH <= 100 ~ "50-100 m",
+    END_DEPTH > 100 & END_DEPTH <= 150 ~ "100-150 m",
+    END_DEPTH > 150 & END_DEPTH <= 200 ~ "150-200 m",
+    END_DEPTH > 200 ~ ">200 m")) 
+
+ns.os.dzone.preysum <- ns.os.dzone.prey %>%
+  group_by(YEAR, Depth.Zone) %>%
+  summarise(KGHA.mean = mean(KGHA.Total), KGHA.se = std.error(KGHA.Total), locations = n()) %>%
+  ungroup() %>%
+  drop_na() %>%
+  mutate(Depth.Zone.Area = case_when(
+    Depth.Zone == "0-50 m" ~ 1120599, 
+    Depth.Zone == "50-100 m" ~ 1065318, 
+    Depth.Zone == "100-150 m" ~ 1541944, 
+    Depth.Zone == "150-200 m" ~ 2210986, 
+    Depth.Zone == ">200 m" ~ 2158177)) %>%
+  mutate(KGHA.AreaWT = KGHA.mean * Depth.Zone.Area) %>%
+  mutate(KGHA.se.AreaWT = KGHA.se * Depth.Zone.Area)
+
+ns.os.dzone.preysum2 <- ns.os.dzone.preysum %>%
+  group_by(YEAR) %>%
+  summarize(KG.mean.sum = sum(KGHA.AreaWT), KG.se.sum = sum(KGHA.se.AreaWT), ) %>%
+  ungroup() %>%
+  mutate(KGHA.WTmean = KG.mean.sum/8097024) %>%
+  mutate(KGHA.WTse = KG.se.sum/8097024)
+
+## Reorder Depth Zones so thay plot logically
+ns.os.dzone.preysum$Depth.Zone <- factor(ns.os.dzone.preysum$Depth.Zone, 
+                                         levels = c("0-50 m", "50-100 m", "100-150 m", "150-200 m", ">200 m"))
+
+ggplot(ns.os.dzone.preysum, aes(x=YEAR, y=KGHA.mean)) + 
+  geom_point(shape = 21, size=3, fill = 'black')+
+  geom_line(size = 1) +
+  geom_errorbar(data=ns.os.dzone.preysum, aes(x=YEAR, ymin=KGHA.mean-KGHA.se, ymax=KGHA.mean+KGHA.se),
+                width=0.4)+
+  #geom_segment(aes(x=YEAR, xend=YEAR, y=0, yend=KGHA.mean), size=1, color='black')+
+  plot_theme+
+  scale_x_continuous(breaks = pretty_breaks())+
+  scale_y_continuous(limits = c(0, NA), breaks = pretty_breaks()) + 
+  ##, 
+  ##                   expand = expansion(mult = c(0, .1)))+
+  labs(x='Year', y='Mean prey fish biomass (kg per ha)', 
+       caption=ann_data_access,
+       title='Lake Superior Prey Fish Biomass by Depth Zone',
+       subtitle='USGS nearshore and offshore bottom trawl assessments') +  
+  facet_wrap(vars(Depth.Zone), ncol=2, scales='free_y') 
+
+ggsave(here('Plots and Tables/RVCAT','ns_os_totalbiomass_depthzones.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+
+ggplot(subset(ns.os.dzone.preysum2, YEAR>=2011 & YEAR <2020), aes(x=YEAR, y=KGHA.WTmean)) + 
+  geom_point(shape = 21, size=6, fill = 'black')+
+  geom_errorbar(data=subset(ns.os.dzone.preysum2, YEAR>=2011 & YEAR <2020), aes(x=YEAR, ymin=KGHA.WTmean-KGHA.WTse, ymax=KGHA.WTmean+KGHA.WTse),
+                width=0.4)+
+  geom_line(size = 1) +
+  plot_theme+
+  scale_x_continuous(breaks = pretty_breaks())+
+  scale_y_continuous(limits=c(0, NA), breaks = pretty_breaks())+
+  labs(x='Year', y='Mean depth zone weighted biomass (kg per ha)', 
+       caption=ann_data_access,
+       title='Lake Superior Prey Fish Biomass',
+       subtitle='USGS bottom trawl assessment')   
+
+ggsave(here('Plots and Tables/RVCAT','ns_os__depthzone_weighted_totalbiomass.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+##All years
+ggplot(ns.os.dzone.preysum2, aes(x=YEAR, y=KGHA.WTmean)) + 
+  geom_point(shape = 21, size=6, fill = 'black')+
+  geom_errorbar(data=ns.os.dzone.preysum2, aes(x=YEAR, ymin=KGHA.WTmean-KGHA.WTse, ymax=KGHA.WTmean+KGHA.WTse),
+                width=0.4)+
+  geom_line(size = 1) +
+  plot_theme+
+  scale_x_continuous(breaks = pretty_breaks())+
+  scale_y_continuous(limits=c(0, NA), breaks = pretty_breaks())+
+  labs(x='Year', y='Mean depth zone weighted biomass (kg per ha)', 
+       caption=ann_data_access,
+       title='Lake Superior Prey Fish Biomass',
+       subtitle='USGS bottom trawl assessment')   
+
+
+##### adjustable depth zones 
+##get rid of predators, sum prey species to get total prey fish biomass
+ns.os <- all.data %>%
+  subset(TARGET==2 & YEAR >1977 | TARGET==118| TARGET==117 & YEAR>2010) %>%
+  filter(TR_DESIGN==25|TR_DESIGN==4) %>%
+  mutate(survey = str_replace_all(TARGET, c("2" = "nearshore", "117" = "offshore", 
+                                            "118" = "offshore"))) 
+
+ns.os.trawls<-ns.os %>%
+  select(OP_ID,SERIAL,TARGET,OP_DATE,YEAR,LOCATION,BEG_DEPTH,END_DEPTH,
+         Mid.Lat.DD, Mid.Long.DD,Surface.Temp,Bottom.Temp,
+         TR_DESIGN,DISTANCE,TOW_TIME,HA_SWEPT) %>%
+  distinct(OP_ID, .keep_all = TRUE)
+
+ns.os.trawls.all.species.x <- ns.os %>%
+  select(OP_ID,SPECIES, KGHA) 
+
+##add zeros for species not collected
+ns.os.trawls.all.species.x <-complete(ns.os.trawls.all.species.x, OP_ID, SPECIES, 
+                                    fill=list(KGHA=0)) %>%
+  left_join(ns.os.trawls) %>%
+  left_join(sci.names) %>%
+  mutate(Depth.Zone = case_when(
+    END_DEPTH <= 100 ~ "0-100 m", 
+    END_DEPTH > 100 ~ ">100 m")) %>%
+mutate(Depth.Zone.Area = case_when(
+  Depth.Zone == "0-100 m" ~ 2185917, 
+  Depth.Zone == ">100 m" ~ 5911107)) 
+  
+ns.os.dzone.prey.x <- ns.os.trawls.all.species.x %>%
+  select(OP_ID, TARGET, YEAR, SPECIES, COMMON_NAME, KGHA, Depth.Zone, Depth.Zone.Area) %>% 
+  group_by(OP_ID) %>% 
+  ##remove piscivorus Lake trout and burbot
+  subset(SPECIES != 317 &  SPECIES != 307 & SPECIES != 308 & SPECIES != 127) %>% 
+  summarise(KGHA.Total = sum(KGHA)) %>%
+  ungroup() %>%
+  left_join(ns.os.trawls) %>%
+  mutate(Depth.Zone = case_when(
+    END_DEPTH <= 100 ~ "0-100 m", 
+    END_DEPTH > 100 ~ ">100 m")) 
+
+ns.os.dzone.preysum.x <- ns.os.dzone.prey.x %>%
+  group_by(YEAR, Depth.Zone) %>%
+  summarise(KGHA.mean = mean(KGHA.Total), KGHA.se = std.error(KGHA.Total), locations = n()) %>%
+  ungroup() %>%
+  drop_na() %>%
+  mutate(Depth.Zone.Area = case_when(
+    Depth.Zone == "0-100 m" ~ 2185917, 
+    Depth.Zone == ">100 m" ~ 5911107)) %>%
+  mutate(KGHA.AreaWT = KGHA.mean * Depth.Zone.Area) %>%
+  mutate(KGHA.se.AreaWT = KGHA.se * Depth.Zone.Area)
+
+ns.os.dzone.preysum2.x <- ns.os.dzone.preysum.x %>%
+  group_by(YEAR) %>%
+  summarize(KG.mean.sum = sum(KGHA.AreaWT), KG.se.sum = sum(KGHA.se.AreaWT), ) %>%
+  ungroup() %>%
+  mutate(KGHA.WTmean = KG.mean.sum/8097024) %>%
+  mutate(KGHA.WTse = KG.se.sum/8097024)
+
+## Reorder Depth Zones so thay plot logically
+ns.os.dzone.preysum.x$Depth.Zone <- factor(ns.os.dzone.preysum.x$Depth.Zone, 
+                                         levels = c("0-100 m", ">100 m"))
+
+ggplot(ns.os.dzone.preysum.x, aes(x=YEAR, y=KGHA.mean)) + 
+  geom_point(shape = 21, size=3, fill = 'black')+
+  geom_line(size = 1) +
+  geom_errorbar(data=ns.os.dzone.preysum.x, aes(x=YEAR, ymin=KGHA.mean-KGHA.se, ymax=KGHA.mean+KGHA.se),
+                width=0.4)+
+  #geom_segment(aes(x=YEAR, xend=YEAR, y=0, yend=KGHA.mean), size=1, color='black')+
+  plot_theme+
+  scale_x_continuous(breaks = pretty_breaks())+
+  scale_y_continuous(limits = c(0, NA), breaks = pretty_breaks()) + 
+  ##, 
+  ##                   expand = expansion(mult = c(0, .1)))+
+  labs(x='Year', y='Mean prey fish biomass (kg per ha)', 
+       caption=ann_data_access,
+       title='Lake Superior Prey Fish Biomass by Depth Zone',
+       subtitle='USGS nearshore and offshore bottom trawl assessments') +  
+  facet_wrap(vars(Depth.Zone), ncol=2, scales='free_y') 
+
+ggsave(here('Plots and Tables/RVCAT','ns_os_totalbiomass_depthzones_x.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+ 
+ggplot(subset(ns.os.dzone.preysum2.x, YEAR>=2011 & YEAR <2020), aes(x=YEAR, y=KGHA.WTmean)) + 
+  geom_point(shape = 21, size=6, fill = 'black')+
+  geom_errorbar(data=subset(ns.os.dzone.preysum2.x, YEAR>=2011 & YEAR <2020), aes(x=YEAR, ymin=KGHA.WTmean-KGHA.WTse, ymax=KGHA.WTmean+KGHA.WTse),
+                width=0.4)+
+  geom_line(size = 1) +
+  plot_theme+
+  scale_x_continuous(breaks = pretty_breaks())+
+  scale_y_continuous(limits=c(0, NA), breaks = pretty_breaks())+
+  labs(x='Year', y='Mean depth zone weighted biomass (kg per ha)', 
+       caption=ann_data_access,
+       title='Lake Superior Prey Fish Biomass',
+       subtitle='USGS bottom trawl assessment')   
+
+ggsave(here('Plots and Tables/RVCAT','ns_os__depthzone_weighted_totalbiomassa_x.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+##All years
+ggplot(ns.os.dzone.preysum2.x, aes(x=YEAR, y=KGHA.WTmean)) + 
+  geom_point(shape = 21, size=6, fill = 'black')+
+  geom_errorbar(data=ns.os.dzone.preysum2.x, aes(x=YEAR, ymin=KGHA.WTmean-KGHA.WTse, ymax=KGHA.WTmean+KGHA.WTse),
+                width=0.4)+
+  geom_line(size = 1) +
+  plot_theme+
+  scale_x_continuous(breaks = pretty_breaks())+
+  scale_y_continuous(limits=c(0, NA), breaks = pretty_breaks())+
+  labs(x='Year', y='Mean depth zone weighted biomass (kg per ha)', 
+       caption=ann_data_access,
+       title='Lake Superior Prey Fish Biomass',
+       subtitle='USGS bottom trawl assessment')   
+
 
 
 #############################################################################
 #subset previous years to plot averages over different time frames
-ns.5ymean<-subset(ns.annual.sum,  YEAR>=(max(YEAR)-4))
-ns.10ymean<-subset(ns.annual.sum, YEAR > (max(YEAR)-9))
-ns.15ymean<-subset(ns.annual.sum, YEAR>=(max(YEAR)-14))
-ns.20ymean<-subset(ns.annual.sum, YEAR>=(max(YEAR)-19))
-ns.30ymean<-subset(ns.annual.sum, YEAR>=(max(YEAR)-29))
-ns.40ymean<-subset(ns.annual.sum, YEAR>=(max(YEAR)-39))
-ns.1985_1995mean<-subset(ns.annual.sum, YEAR >=1985 & YEAR <= 1995)
-ns.2000_2010mean<-subset(ns.annual.sum, YEAR >=2000 & YEAR <= 2010)
+ns.10ymean<-subset(ns.annual.sum,  YEAR>=(max(YEAR)-9))
+ns.20ymean<-subset(ns.annual.sum, YEAR < (max(YEAR)-10) & YEAR > (max(YEAR)-19))
+ns.30ymean<-subset(ns.annual.sum, YEAR < (max(YEAR)-20) & YEAR > (max(YEAR)-29))
+ns.40ymean<-subset(ns.annual.sum, YEAR < (max(YEAR)-30) & YEAR > (max(YEAR)-39))
+ns.50ymean<-subset(ns.annual.sum, YEAR < (max(YEAR)-40) & YEAR > (max(YEAR)-49))
 
+mean.ns.kgha.currentyear<-ns.trawls.sum %>%
+  subset(YEAR == max(ns.annual.sum$YEAR)) 
+
+mean.os.kgha.currentyear<-os.trawls.sum %>%
+  subset(YEAR == max(os.annual.sum$YEAR)) 
 
 ###############################################################################
 ##Nearshore data plots
@@ -753,23 +1254,23 @@ ggplot(ns.annual.sum, aes(x=YEAR, y=mean)) +
   geom_bar(stat='identity', fill='grey75', color='black') +
   geom_errorbar(data=ns.annual.sum, aes(x=YEAR, ymin=mean-std.error, ymax=mean+std.error),
                 width=0.4)+
-  geom_segment(x=(max(ns.annual.sum$YEAR)-4), xend=max(ns.annual.sum$YEAR), y=mean(ns.5ymean$mean), #5 year mean
-               yend=mean(ns.5ymean$mean), size=1.2, color='black')+
-  geom_segment(x=(max(ns.annual.sum$YEAR)-9), xend=max(ns.annual.sum$YEAR), y=mean(ns.10ymean$mean), #10 year mean
-               yend=mean(ns.10ymean$mean), size=1.2, color='black')+
-  geom_segment(x=(max(ns.annual.sum$YEAR)-19), xend=max(ns.annual.sum$YEAR), y=mean(ns.20ymean$mean), #20 year mean
-               yend=mean(ns.20ymean$mean), size=1.2, color='black')+
-  geom_segment(x=(max(ns.annual.sum$YEAR)-29), xend=max(ns.annual.sum$YEAR), y=mean(ns.30ymean$mean), #30 year mean
-               yend=mean(ns.30ymean$mean), size=1.2, color='black')+
-  geom_segment(x=(max(ns.annual.sum$YEAR)-39), xend=max(ns.annual.sum$YEAR), y=mean(ns.40ymean$mean), #40 year mean
-               yend=mean(ns.40ymean$mean), size=1.2, color='black') +
+  geom_segment(x=(max(ns.annual.sum$YEAR)-9), xend=max(ns.annual.sum$YEAR), 
+               y=mean(ns.10ymean$mean), yend=mean(ns.10ymean$mean), size=1.2, color='black') + #last 10 year mean
+  geom_segment(x=(max(ns.annual.sum$YEAR)-10), xend=(max(ns.annual.sum$YEAR)-19), 
+               y=mean(ns.20ymean$mean), yend=mean(ns.20ymean$mean), size=1.2, color='black') + #20 years ago mean
+  geom_segment(x=(max(ns.annual.sum$YEAR)-20), xend=(max(ns.annual.sum$YEAR)-29), 
+               y=mean(ns.30ymean$mean), yend=mean(ns.30ymean$mean), size=1.2, color='black') + #20 years ago mean
+  geom_segment(x=(max(ns.annual.sum$YEAR)-30), xend=(max(ns.annual.sum$YEAR)-39), 
+               y=mean(ns.40ymean$mean), yend=mean(ns.40ymean$mean), size=1.2, color='black') + #20 years ago mean
+  geom_segment(x=(max(ns.annual.sum$YEAR)-40), xend=min(ns.annual.sum$YEAR), 
+               y=mean(ns.50ymean$mean), yend=mean(ns.50ymean$mean), size=1.2, color='black') + #20 years ago mean
   scale_x_continuous(breaks = pretty_breaks()) +
   scale_y_continuous(expand=c(0,0)) +
   plot_theme +
-  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+  labs(x='Year', y='Mean biomass (kg per ha)', caption=ann_data_access,
        title='Lake Superior Nearshore Total Fish Biomass',
-       subtitle='USGS bottom trawl assessment') 
-  
+       subtitle='USGS bottom trawl assessment in USA waters, 1978-2021')
+
 ggsave(here('Plots and Tables/RVCAT','ns_annual_totalbiomass.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
 ##plot mean nearshore biomass no mean lines
@@ -788,10 +1289,10 @@ ggplot(ns.annual.sum, aes(x=YEAR, y=mean))+
 ggsave(here('Plots and Tables/RVCAT','ns_annual_totalbiomass_nomeans.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
 ##lollpop with potential FCO 
-ns.annual.sum.2020 <- ns.annual.sum %>%
-  subset(YEAR <2020)
+##ns.annual.sum.2020 <- ns.annual.sum %>%
+##  subset(YEAR <2020)
 
-ggplot(ns.annual.sum.2020, aes(x=YEAR, y=mean)) + 
+ggplot(ns.annual.sum, aes(x=YEAR, y=mean)) + 
   aes(x=YEAR, y = mean, fill = FCO) + 
   geom_hline(yintercept=7, size = 1.5, colour = 'sienna2') +
   geom_point(shape = 21, size=6)+
@@ -808,30 +1309,6 @@ ggplot(ns.annual.sum.2020, aes(x=YEAR, y=mean)) +
        title='Lake Superior Total Fish Biomass',
        subtitle='USGS bottom trawl assessment')
 ggsave(here('Plots and Tables/RVCAT','ns_totalbiomass_FCO.png'), dpi = 300, width = 40, height = 20, units = "cm")
-
-
-
-##ns mean biomass with 10 year chunk means
-ggplot(ns.annual.sum, aes(x=YEAR, y=mean))+
-  geom_bar(stat='identity', fill='grey75', color='black')+
-  geom_errorbar(data=ns.annual.sum, aes(x=YEAR, ymin=mean-std.error, ymax=mean+std.error),
-                width=0.4)+
-  geom_rect(xmin=1985, xmax=1995, ymin=(mean(ns.1985_1995mean$mean)-0.5), 
-            ymax=(mean(ns.1985_1995mean$mean+0.5)), fill='deeppink', alpha=0.03)+
-  geom_rect(xmin=2000, xmax=2010, ymin=(mean(ns.2000_2010mean$mean)-0.5), 
-            ymax=(mean(ns.2000_2010mean$mean+0.5)), fill='deeppink', alpha=0.03)+
-  geom_rect(xmin=max(ns.annual.sum$YEAR-10), xmax=max(ns.annual.sum$YEAR), 
-            ymin=(mean(ns.10ymean$mean)-0.5), 
-            ymax=(mean(ns.10ymean$mean)+0.5), fill='deeppink', alpha=0.03)+
-  geom_hline(yintercept=mean(ns.annual.sum$mean), size = 1.5, colour = 'sienna2') +
-  scale_x_continuous(breaks = pretty_breaks()) +
-  scale_y_continuous(expand=c(0,0)) +
-  plot_theme+
-  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
-       title='Lake Superior Nearshore Total Fish Biomass',
-       subtitle='USGS bottom trawl assessment') 
-  
-ggsave(here('Plots and Tables/RVCAT','ns_annual_totalbiomass_10yrmeans.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
 
 ##ns skewness plot------------------------------------------------------------------------------------------------------SKEWNESS-----
@@ -871,7 +1348,7 @@ ggplot(subset(ns.annual.sum.by.species, COMMON_NAME == "Cisco" | COMMON_NAME == 
 ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_cisco_bloater.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
 
-###Cisco, Bloater, LWF
+###Cisco, Bloater, LWF - stacked bar
 ggplot(subset(ns.annual.sum.by.species, 
               COMMON_NAME == "Cisco" |
               COMMON_NAME == "Bloater" |
@@ -887,7 +1364,37 @@ ggplot(subset(ns.annual.sum.by.species,
   scale_fill_manual( name=' ', values=c('palegreen3','sienna1', 'lightpink3'))+
   theme(legend.position = c(0.8,0.8))
 
-ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_cisco_bloater_lwf.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_cisco_bloater_lwf_stackbar.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+###Cisco, Bloater, LWF - facet
+fmean <- ns.annual.sum.by.species %>%
+  subset(COMMON_NAME == "Cisco" | 
+           COMMON_NAME == "Bloater" |
+           COMMON_NAME == "Lake Whitefish") %>%
+  group_by(COMMON_NAME) %>%
+  summarise(mean = mean(mean))
+
+ggplot(subset(ns.annual.sum.by.species, 
+              COMMON_NAME == "Cisco" |
+                COMMON_NAME == "Bloater" |
+                COMMON_NAME == "Lake Whitefish")) + 
+  aes(x=YEAR, y = mean, fill=COMMON_NAME) + 
+  geom_bar(stat='identity', fill='grey75', color='black')+
+  geom_errorbar(aes(x=YEAR, ymin=mean-std.error, ymax=mean+std.error),width=0.4) +
+  geom_hline(data = (subset(fmean, 
+                            COMMON_NAME == "Cisco" |
+                            COMMON_NAME == "Bloater" |
+                            COMMON_NAME == "Lake Whitefish")), 
+             aes(yintercept=mean), linetype = "dashed") +
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(expand=c(0,0)) +
+  plot_theme+
+  labs(x='Year', y='Mean biomass (kg per ha)',caption=ann_data_access,
+       title='Lake Superior Nearshore Coregonus Biomasss',
+       subtitle='USGS bottom trawl assessment in USA waters, 1978-2021') +
+  facet_grid(COMMON_NAME ~., scales="free_y")
+
+ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_cisco_bloater_lwf_facet.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
 
 #####Individual Species
@@ -906,6 +1413,9 @@ ggplot(subset(ns.annual.sum.by.species, COMMON_NAME == "Cisco")) +
 ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_Cisco.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
 ###Bloater
+#pig <- ns.annual.sum.by.species %>%
+#  subset(YEAR <= 2019)
+
 ggplot(subset(ns.annual.sum.by.species, COMMON_NAME == "Bloater")) +
   aes(x=YEAR, y = mean) + 
   geom_bar(stat='identity', fill='grey75', color='black')+
@@ -1080,7 +1590,8 @@ ggsave(here('Plots and Tables/RVCAT','ns_annual_biomass_MiscSpecies.png'), dpi =
 ggplot(subset(ns.trawls.sum, YEAR == max(ns.trawls.sum$YEAR))) + 
   aes(x=reorder(LOCATION, KGHA), y=KGHA) +
   geom_bar(stat='identity', fill='grey75', color='black') +
-  geom_hline(yintercept=mean(ns.trawls.sum$KGHA)) + 
+  geom_hline(yintercept=mean(mean.ns.kgha.currentyear$KGHA)) +
+  ##geom_hline(yintercept=mean(ns.trawls.sum$KGHA)) + 
   scale_x_discrete(expand=c(0,0))+
   scale_y_continuous(expand=c(0,0)) +
   theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5, size=15, family='serif')) + 
@@ -1096,7 +1607,8 @@ ggsave(here('Plots and Tables/RVCAT','ns_biomass_by_station_bw.png'), dpi = 300,
 ggplot(subset(ns.trawls.sum, YEAR == max(ns.trawls.sum$YEAR))) + 
   aes(x=reorder(LOCATION, KGHA), y=KGHA, fill = KGHA) +
   geom_bar(stat='identity')+
-  geom_hline(yintercept=mean(ns.trawls.sum$KGHA)) +
+  geom_hline(yintercept=mean(mean.ns.kgha.currentyear$KGHA)) +
+  ##geom_hline(yintercept=mean(ns.trawls.sum$KGHA)) +
   scale_fill_gradient(low='deepskyblue2', high='red', name='Fish biomass\n(kg per ha)', guide=F)+
   scale_x_discrete(expand=c(0,0))+
   scale_y_continuous(expand=c(0,0)) +
@@ -1127,8 +1639,9 @@ ns.skew
 ggplot(subset(ns.trawls.sum, YEAR == max(ns.trawls.sum$YEAR))) + 
        aes(x=reorder(LOCATION, KGHA), y=KGHA) +
   geom_bar(stat='identity', fill='grey75', color='black') +
-  geom_hline(yintercept=mean(ns.trawls.sum$KGHA)) +
-  annotation_custom(ggplotGrob(ns.skew), ymin=20, ymax=45, xmax=60, xmin=3) + 
+  geom_hline(yintercept=mean(mean.ns.kgha.currentyear$KGHA)) +
+  ##geom_hline(yintercept=mean(ns.trawls.sum$KGHA)) +
+  annotation_custom(ggplotGrob(ns.skew), ymin=20, ymax=70, xmax=35, xmin=3) + 
       ##controls placement of the inset plot if need to change
   scale_color_gradient(low='deepskyblue2', high='red', name='Biomass\n(kg per ha)')+
   scale_x_discrete(expand=c(0,0))+
@@ -1146,9 +1659,10 @@ ggsave(here('Plots and Tables/RVCAT','ns_current_biomass_by_station_skewness_bw.
 ggplot(subset(ns.trawls.sum, YEAR == max(ns.trawls.sum$YEAR))) + 
   aes(x=reorder(LOCATION, KGHA), y=KGHA, fill = KGHA) +
   geom_bar(stat='identity')+
-  geom_hline(yintercept=mean(ns.trawls.sum$KGHA)) +
+  geom_hline(yintercept=mean(mean.ns.kgha.currentyear$KGHA)) +
+  ##geom_hline(yintercept=mean(ns.trawls.sum$KGHA)) +
   scale_fill_gradient(low='deepskyblue2', high='red', name='Fish biomass\n(kg per ha)', guide=F)+
-  annotation_custom(ggplotGrob(ns.skew), ymin=20, ymax=45, xmax=60, xmin=3) + 
+  annotation_custom(ggplotGrob(ns.skew), ymin=20, ymax=70, xmax=35, xmin=3) + 
   scale_x_discrete(expand=c(0,0))+
   scale_y_continuous(expand=c(0,0)) +
   theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5, size=15, family='serif')) + 
@@ -1174,9 +1688,8 @@ ggplot(subset(ns.trawls.sum, YEAR == max(ns.trawls.sum$YEAR))) +
   geom_point(subset(ns.trawls.sum, YEAR ==max(ns.trawls.sum$YEAR)),
              mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=KGHA), size=6, stroke=1.5) +
   scale_color_gradient(low='deepskyblue2', high='red', name='Biomass\n(kg per ha)') +
-  scale_y_continuous() +
-  scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84')) + 
+  scale_x_continuous(breaks = pretty_breaks(), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), name="Latitude")+
   theme_bw() +
   map_theme+
   geom_text(aes(label=LOCATION)) +
@@ -1195,11 +1708,18 @@ ns.current.biomass.map<-ggplot(subset(ns.trawls.sum, YEAR == max(ns.trawls.sum$Y
   geom_point(subset(ns.trawls.sum, YEAR ==max(ns.trawls.sum$YEAR)),
              mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=KGHA), size=6, stroke=1.5) +
   scale_color_gradient(low='deepskyblue2', high='red', name='Biomass\n(kg per ha)') +
-  scale_y_continuous() +
-  scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84')) + 
+  scale_x_continuous(breaks = pretty_breaks(), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), name="Latitude")+
   theme_bw() +
   map_theme+
+  theme(axis.text=element_text(size=28, family='serif'),
+        axis.title=element_text(size=28, family='serif'),
+        legend.text=element_text(size=22, family='serif'),
+        legend.title=element_text(size=22, family='serif'),
+        plot.title=element_text(size=28, family='serif'),
+        plot.subtitle=element_text(size=28, family='serif'),
+        plot.caption=element_text(size=25, family='serif')
+  ) +
   geom_text(aes(label=LOCATION)) +
   labs(x='Longitude', y='Latitude')
 
@@ -1207,22 +1727,35 @@ ns.current.biomass.map
 
 ##inset above map into station biomass bar graph, with corresponding color scales
 ## Color gradient ars to match colors on map
+
 ggplot(subset(ns.trawls.sum, YEAR == max(ns.trawls.sum$YEAR))) + 
   aes(x=reorder(LOCATION, KGHA), y=KGHA, fill = KGHA) +
   geom_bar(stat='identity')+
   scale_fill_gradient(low='deepskyblue2', high='red', name='Fish biomass\n(kg per ha)', guide=F)+
-  geom_hline(yintercept=mean(ns.trawls.sum$KGHA)) +
-  annotation_custom(ggplotGrob(ns.current.biomass.map), ymin=10, ymax=49, xmax=55, xmin=3)+
+  geom_hline(yintercept=mean(mean.ns.kgha.currentyear$KGHA)) +
+  
+##  geom_hline(yintercept=filter(ns.trawls.sum, YEAR == max(ns.trawls.sum$YEAR)), mean(ns.trawls.sum$KGHA)) +
+  annotation_custom(ggplotGrob(ns.current.biomass.map), ymin=16, ymax=72, xmax=41, xmin=2)+
   scale_x_discrete(expand=c(0,0))+
   scale_y_continuous(expand=c(0,0)) +
-  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5, size=15, family='serif')) + 
   plot_theme +
+  theme(axis.text=element_text(size=28, family='serif'),
+        axis.title=element_text(size=28, family='serif'),
+        legend.text=element_text(size=22, family='serif'),
+        legend.title=element_text(size=22, family='serif'),
+        plot.title=element_text(size=28, family='serif'),
+        plot.subtitle=element_text(size=28, family='serif'),
+        plot.caption=element_text(size=25, family='serif')
+  ) +
+  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5, size=20, family='serif')) + 
   labs(x='Station identifier', y='Biomass (kg per ha)',
        caption=ann_data_access,
        title='Lake Superior Fish Biomass at Nearshore Stations',
-       subtitle=(paste('USGS bottom trawl assessment,', max(ns.trawls.sum$YEAR))))  
+       subtitle='USGS bottom trawl assessment in USA waters, 2021')  
 
-ggsave(here('Plots and Tables/RVCAT','ns_current_sites_biomass_map2.png'), dpi = 300, width = 40, height = 20, units = "cm")
+  ##subtitle=(paste('USGS bottom trawl assessment,', max(ns.trawls.sum$YEAR))))  
+
+ggsave(here('Plots and Tables/RVCAT','ns_current_sites_biomass_map2.png'), dpi = 300, width = 60, height = 30, units = "cm")
 
 
 ##create map with stations color coded by fishes
@@ -1232,9 +1765,8 @@ ggplot(subset(ns.trawls.sum, YEAR == max(ns.trawls.sum$YEAR))) +
   geom_point(subset(ns.trawls.sum, YEAR == max(ns.trawls.sum$YEAR)), 
              mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=Fishes), size=6, stroke=1.5) +
   scale_color_gradient(low='deepskyblue2', high='red', name='Fish species') +
-  scale_y_continuous() +
-  scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84')) + 
+  scale_x_continuous(breaks = pretty_breaks(), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), name="Latitude")+
   theme_bw() +
   map_theme+
   geom_text(aes(label=LOCATION)) +
@@ -1390,7 +1922,8 @@ ggsave(here('Plots and Tables/RVCAT','os_annual_biomass_siscowet.png'), dpi = 30
 ggplot(subset(os.trawls.sum, YEAR == max(os.trawls.sum$YEAR))) +
   aes(x=reorder(LOCATION, KGHA), y=KGHA) +
   geom_bar(stat='identity', fill='grey75', color='black') +
-  geom_hline(yintercept=mean(os.trawls.sum$KGHA)) + 
+  geom_hline(yintercept=mean(mean.os.kgha.currentyear$KGHA)) +
+  ##geom_hline(yintercept=mean(os.trawls.sum$KGHA)) + 
   scale_x_discrete(expand=c(0,0))+
   scale_y_continuous(expand=c(0,0)) +
   theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5, size=15, family='serif')) + 
@@ -1407,7 +1940,8 @@ ggsave(here('Plots and Tables/RVCAT','os_biomass_by_station_bw.png'), dpi = 300,
 ggplot(subset(os.trawls.sum, YEAR == max(os.trawls.sum$YEAR))) + 
   aes(x=reorder(LOCATION, KGHA), y=KGHA, fill = KGHA) +
   geom_bar(stat='identity')+
-  geom_hline(yintercept=mean(os.trawls.sum$KGHA)) +
+  geom_hline(yintercept=mean(mean.os.kgha.currentyear$KGHA)) +
+  ##geom_hline(yintercept=mean(os.trawls.sum$KGHA)) +
   scale_fill_gradient(low='deepskyblue2', high='red', name='Fish biomass\n(kg per ha)', guide=F)+
   scale_x_discrete(expand=c(0,0))+
   scale_y_continuous(expand=c(0,0)) +
@@ -1426,7 +1960,8 @@ ggplot(subset(os.trawls.sum, YEAR == max(os.trawls.sum$YEAR))) +
   aes(x=reorder(LOCATION, Fishes), y=Fishes, fill = Fishes) +
   geom_bar(stat='identity')+
   scale_fill_gradient(low='deepskyblue2', high='red', name='Fish biomass\n(kg per ha)', guide=F)+
-  geom_hline(yintercept=mean(os.trawls.sum$Fishes)) +
+  geom_hline(yintercept=mean(mean.os.kgha.currentyear$Fishes)) +
+##  geom_hline(yintercept=mean(os.trawls.sum$Fishes)) +
   scale_x_discrete(expand=c(0,0))+
   scale_y_continuous(expand=c(0,0)) +
   theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5, size=15, family='serif')) + 
@@ -1456,7 +1991,8 @@ os.skew
 ggplot(subset(os.trawls.sum, YEAR == max(os.trawls.sum$YEAR))) + 
   aes(x=reorder(LOCATION, KGHA), y=KGHA) +
   geom_bar(stat='identity', fill='grey75', color='black') +
-  geom_hline(yintercept=mean(os.trawls.sum$KGHA)) +
+  geom_hline(yintercept=mean(mean.os.kgha.currentyear$KGHA)) +
+  ##geom_hline(yintercept=mean(os.trawls.sum$KGHA)) +
   annotation_custom(ggplotGrob(os.skew), ymin=20, ymax=45, xmax=60, xmin=3) + 
   ##controls placement of the inset plot if need to change
   scale_color_gradient(low='deepskyblue2', high='red', name='Biomass\n(kg per ha)')+
@@ -1474,7 +2010,8 @@ ggsave(here('Plots and Tables/RVCAT','os_current_biomass_by_station_skewness_bw.
 ggplot(subset(os.trawls.sum, YEAR == max(os.trawls.sum$YEAR))) + 
   aes(x=reorder(LOCATION, KGHA), y=KGHA, fill=KGHA) +
   geom_bar(stat='identity') +
-  geom_hline(yintercept=mean(os.trawls.sum$KGHA)) +
+  geom_hline(yintercept=mean(mean.os.kgha.currentyear$KGHA)) +
+  ##geom_hline(yintercept=mean(os.trawls.sum$KGHA)) +
   annotation_custom(ggplotGrob(os.skew), ymin=10, ymax=22, xmax=30, xmin=1) + 
   ##controls placement of the inset plot if need to change
   scale_fill_gradient(low='deepskyblue2', high='red', name='Biomass\n(kg per ha)')+
@@ -1503,9 +2040,8 @@ ggplot(subset(os.trawls.sum, YEAR == max(os.trawls.sum$YEAR))) +
   geom_point(subset(os.trawls.sum, YEAR == max(os.trawls.sum$YEAR)), 
              mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=KGHA), size=6, stroke=1.5) +
   scale_color_gradient(low='deepskyblue2', high='red', name='Biomass\n(kg per ha)') +
-  scale_y_continuous() +
-  scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84')) + 
+  scale_x_continuous(breaks = pretty_breaks(), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), name="Latitude")+
   theme_bw() +
   map_theme+
   geom_text(aes(label=LOCATION)) +
@@ -1523,9 +2059,8 @@ ggplot(subset(os.trawls.sum, YEAR == max(os.trawls.sum$YEAR)) +
   geom_point(subset(os.trawls.sum, YEAR == max(os.trawls.sum$YEAR))), 
              mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=Fishes), size=6, stroke=1.5) +
   scale_color_gradient(low='deepskyblue2', high='red', name='Fish species') +
-  scale_y_continuous() +
-  scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84')) + 
+  scale_x_continuous(breaks = pretty_breaks(), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), name="Latitude")+
   theme_bw() +
   map_theme+
   geom_text(aes(label=LOCATION)) +
@@ -1543,9 +2078,8 @@ os.current.biomass.map<-ggplot(subset(os.trawls.sum, YEAR == max(os.trawls.sum$Y
   geom_point(subset(os.trawls.sum, YEAR == max(os.trawls.sum$YEAR)), 
              mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=KGHA), size=6, stroke=1.5) +
   scale_color_gradient(low='deepskyblue2', high='red', name='Biomass\n(kg per ha)') +
-  scale_y_continuous() +
-  scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84')) + 
+  scale_x_continuous(breaks = pretty_breaks(), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), name="Latitude")+
   theme_bw() +
   map_theme+
   geom_text(aes(label=LOCATION)) +
@@ -1559,7 +2093,8 @@ ggplot(subset(os.trawls.sum, YEAR == max(os.trawls.sum$YEAR))) +
   aes(x=reorder(LOCATION, KGHA), y=KGHA, fill = KGHA) +
   geom_bar(stat='identity')+
   scale_fill_gradient(low='deepskyblue2', high='red', name='Fish biomass\n(kg per ha)', guide=F)+
-  geom_hline(yintercept=mean(os.trawls.sum$KGHA)) +
+  geom_hline(yintercept=mean(mean.os.kgha.currentyear$KGHA)) +
+  ##geom_hline(yintercept=mean(os.trawls.sum$KGHA)) +
   annotation_custom(ggplotGrob(os.current.biomass.map), ymin=10, ymax=49, xmax=55, xmin=3)+
   scale_x_discrete(expand=c(0,0))+
   scale_y_continuous(expand=c(0,0)) +
@@ -1582,6 +2117,84 @@ ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
 ls_poly.fort <- fortify(ls_poly)
 
 ##subset out the current year, and nearshore and offshore targets (if you want Cheq Bay, can add that target code)
+##Nearshore and offshore sites typically sampled
+
+ns.os.planned.means<-all.data %>% 
+  select(OP_ID, YEAR, TARGET, LOCATION, BEG_LONGITUDE_DD, END_LONGITUDE_DD, 
+         BEG_LATITUDE_DD, END_LATITUDE_DD, Mid.Lat.DD, Mid.Long.DD, 
+         BEG_DEPTH, END_DEPTH,Surface.Temp, Bottom.Temp) %>%
+  filter(TARGET==2|TARGET==117|TARGET==118|TARGET==106) %>%
+  distinct(OP_ID, .keep_all = TRUE) %>%
+  group_by(LOCATION) %>%
+  summarise(last.sampled = max(YEAR), 
+            mean.BEG_LONGITUDE_DD = mean(BEG_LONGITUDE_DD), 
+            mean.END_LONGITUDE_DD = mean(END_LONGITUDE_DD), 
+            mean.BEG_LATITUDE_DD = mean(BEG_LATITUDE_DD), 
+            mean.BEG_LATITUDE_DD = mean(BEG_LATITUDE_DD), 
+            mean.Mid.Lat.DD = mean(Mid.Lat.DD), 
+            mean.Mid.Long.DD = mean(Mid.Long.DD), 
+            mean.BEG_DEPTH = mean(BEG_DEPTH), 
+            mean.END_DEPTH = mean(END_DEPTH),
+            mean.Surface.Temp = mean(Surface.Temp),
+            mean.Bottom.Temp = mean(Bottom.Temp),
+  ) %>%
+  ungroup() 
+
+ns.os.planned<-all.data %>% 
+  select(OP_ID,OP_DATE,YEAR,TARGET,LOCATION, M_UNIT, STATE) %>%
+  filter(TARGET==2|TARGET==117|TARGET==118|TARGET==106) %>%
+  distinct(LOCATION, .keep_all = TRUE) %>%
+  mutate(survey = str_replace_all(TARGET, c("2" = "nearshore", "117" = "offshore", 
+                                            "118" = "offshore", "106" = "Chequamegon Bay"))) %>%
+  mutate(Country = case_when(
+    STATE == "MI" ~ 'USA', 
+    STATE == "MN" ~ 'USA', 
+    STATE == "WI" ~ 'USA', 
+    STATE != "MI" | STATE != "MN" | STATE != "WI" ~ 'Canada')) %>%
+  left_join(ns.os.planned.means) %>%
+  mutate(Current = case_when(
+    last.sampled >= 2018 ~ 'Current', 
+    last.sampled <2018 ~ 'Extinct'))
+
+#Map of all sites typically sampled in a non-CSMI year
+ns.os.planned <- ns.os.planned %>%
+  filter(survey == 'nearshore') %>%
+  filter(Current == 'Current') %>%
+  filter(Country == 'USA')
+
+ggplot(ns.os.planned, aes(mean.Mid.Long.DD, mean.Mid.Lat.DD)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(color='deepskyblue', size=6, stroke=1.5)+
+  map_theme+
+  geom_text(aes(label=LOCATION))+
+  labs(caption=ann_data_access,
+       title='Lake Superior 2021 Nearshore Trawl Stations')
+
+ggsave(here('Plots and Tables/RVCAT','Planned_USANearshoreSites.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+
+ggplot(ns.os.planned, aes(mean.Mid.Long.DD, mean.Mid.Lat.DD)) +
+  theme_bw() +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
+                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(ns.os.planned, mapping=aes(mean.Mid.Long.DD, mean.Mid.Lat.DD, color=Country), size=6, stroke=1.5)+
+  scale_color_manual(values=c('palegreen3', 'cadetblue2'), 
+                     name='Country', labels=c('Canada','USA'))+
+  map_theme+
+  geom_text(aes(label=LOCATION))+
+  labs(caption=ann_data_access,
+         title='Lake Superior Nearshore Bottom Trawl Stations')
+
+ggsave(here('Plots and Tables/RVCAT','Planned_NearshoreSites.png'), dpi = 300, width = 40, height = 20, units = "cm")
+
+
+##subset out the current year, and nearshore and offshore targets (if you want Cheq Bay, can add that target code)
 ##Nearshore and offshore and CBay sites
 all.sites.current<-all.data %>% 
   select(OP_ID,OP_DATE,YEAR,TARGET,LOCATION, BEG_LONGITUDE_DD, END_LONGITUDE_DD, 
@@ -1600,13 +2213,11 @@ ggplot(all.sites.current, aes(Mid.Long.DD, Mid.Lat.DD)) +
   scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
                      labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
-  geom_point(all.sites.current, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=survey), size=6, stroke=1.5)+
-  scale_color_manual(values=c('salmon','cadetblue2'), 
-                     #scale_color_manual(values=c('salmon','cadetblue2', 'palegreen3'), 
-                                        name='Survey', labels=c('Nearshore','Offshore'))+
-#  name='Survey', labels=c('Chequamegon Bay','Nearshore','Offshore'))+
+  geom_point(all.sites.current, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color = survey), size=5, stroke=1.5, show.legend = FALSE)+
+ scale_color_manual(values=c('cadetblue2','salmon', 'palegreen3'), 
+                    name='Survey', labels=c('Nearshore','Offshore','Chequamegon Bay'))+
   map_theme+
-  geom_text(aes(label=LOCATION))+
+  geom_text(aes(label=LOCATION), size =3)+
   labs(caption=ann_data_access,
        title='Lake Superior Stations Sampled',
        subtitle=(paste('USGS bottom trawl assessments,', all.sites.current$YEAR)))
@@ -1680,7 +2291,7 @@ cbay.trawl.sites <- cbay.trawls %>%
 
 ggplot(cbay.trawl.sites, aes(Mid.Long.DD, Mid.Lat.DD)) + 
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
-#  geom_point(aes(Mid.Long.DD, Mid.Lat.DD), shape = 21size=10, stroke=1.5)+
+#  geom_point(aes(Mid.Long.DD, Mid.Lat.DD), shape = 21, size=10, stroke=1.5)+
   scale_y_continuous(name='Latitude', breaks=seq(46.6,46.7, by=.1),limits=c(46.58,46.72), labels=c(46.6, 46.7))+
   scale_x_continuous(name='Longitude', limits=c(-91,-90.68))+
   geom_text(aes(label=spot)) +
@@ -1699,7 +2310,7 @@ ggsave(here('Plots and Tables/RVCAT','cbay_alltrawls.png'), dpi = 300, width = 3
 #Map of all sites visited in the current year
 pig <- all.data %>%
   subset(TARGET == 2) %>%
-  subset(YEAR == 1978) 
+  subset(YEAR == 2019) 
 
 pig <- distinct(pig, OP_ID, .keep_all = TRUE)
 
@@ -1720,23 +2331,78 @@ ggplot(pig, aes(Mid.Long.DD, Mid.Lat.DD)) +
 
 ggsave(here('Plots and Tables/RVCAT','LSBS_Misc_sites.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
-ggplot(pig, aes(Mid.Long.DD, Mid.Lat.DD)) +
-  theme_bw() +
-  scale_y_continuous(name='Latitude')+
-  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+
+##LS management units with sampling locations for a typical year
+all.sites.current<-all.data %>% 
+  select(OP_ID,OP_DATE,YEAR,TARGET,LOCATION, Country, BEG_LONGITUDE_DD, END_LONGITUDE_DD, 
+         BEG_LATITUDE_DD, END_LATITUDE_DD, Mid.Lat.DD, Mid.Long.DD, 
+         BEG_DEPTH, END_DEPTH,Surface.Temp, Bottom.Temp) %>%
+  filter(YEAR==max(YEAR)) %>% 
+  filter(TARGET==2 | TARGET == 118 | TARGET == 117 | TARGET == 106) %>%
+  distinct(OP_ID, .keep_all = TRUE) %>%
+  mutate(survey = str_replace_all(TARGET, c("2" = "nearshore", "117" = "offshore", 
+                                            "118" = "offshore", "106" = "Chequamegon Bay")))
+
+ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "ls_lktrout_mgmt_units_proj_new_ONT")
+ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
+ls_poly.fort <- tidy(ls_poly)
+
+ggplot(subset(all.sites.current, survey == "nearshore" | survey == "offshore")) +
+  aes(Mid.Long.DD, Mid.Lat.DD) + 
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
-  geom_point(data=pig, mapping=aes(Mid.Long.DD, Mid.Lat.DD, color=YEAR), size=1, stroke=1.5)+
-  scale_color_continuous(high='red',low='deepskyblue2',name=expression(underline('Year')), 
-                         breaks=pretty_breaks()) +
-  geom_text(aes(label=OP_ID)) +
+  geom_point(aes(Mid.Long.DD, Mid.Lat.DD, color=survey), size=6, stroke=1.5)+
+  geom_polygon(data=ls_poly.fort, aes(long, lat, group = group), colour = "black", fill = NA, size = 0.5)+
+  #geom_text(data=M_units, aes(label=id)) +
+  scale_y_continuous(breaks = pretty_breaks(), name='Latitude') +
+  scale_x_continuous(breaks = pretty_breaks(), name='Longitude' )+
+  theme_bw() +
   map_theme+
+  geom_text(aes(label=LOCATION))+
   labs(caption=ann_data_access,
-       title='Lake Superior USGS Trawl Locations, 1983')
-#,     subtitle='Sites labeled with OP_ID')
+       title='Lake Superior Stations Sampled',
+       subtitle=(paste('USGS bottom trawl assessment,', all.sites.current$YEAR)))
 
-ggsave(here('Plots and Tables/RVCAT','LSBS_Misc_sites.png'), dpi = 300, width = 40, height = 20, units = "cm")
+ggsave(here('Plots and Tables/RVCAT','LSBS_Munits_sites.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
+
+##LS management units with sampling locations for an upcoming survey year
+all.sites.current<-all.data %>% 
+  select(OP_ID,OP_DATE,YEAR,TARGET,LOCATION, Country, BEG_LONGITUDE_DD, END_LONGITUDE_DD, 
+         BEG_LATITUDE_DD, END_LATITUDE_DD, Mid.Lat.DD, Mid.Long.DD, 
+         BEG_DEPTH, END_DEPTH,Surface.Temp, Bottom.Temp) %>%
+  filter(YEAR==max(YEAR)) %>% 
+  #  filter(TARGET==2|TARGET==117|TARGET==118|TARGET==106) %>%
+  filter(TARGET==2 & Country == 'USA') %>%
+  distinct(OP_ID, .keep_all = TRUE) %>%
+  mutate(survey = str_replace_all(TARGET, c("2" = "nearshore", "117" = "offshore", 
+                                            "118" = "offshore", "106" = "Chequamegon Bay")))
+
+library(gpclib)
+
+ls_poly <- readOGR(dsn = here('Data',"shapefiles/LakeSuperior"), layer = "ls_lktrout_mgmt_units_proj_new_ONT")
+ls_poly <- spTransform(ls_poly, CRS("+proj=longlat"))
+ls_poly.fort <- tidy(ls_poly, region = "MAN_DIST")
+lapply(ls_poly.fort, class)
+mnames <- aggregate(cbind(long, lat) ~ id, data = ls_poly.fort, FUN=mean) 
+
+
+ggplot(subset(all.sites.current, survey == "nearshore" | survey == "offshore")) +
+  aes(Mid.Long.DD, Mid.Lat.DD) + 
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  #  geom_point(aes(Mid.Long.DD, Mid.Lat.DD, color=survey), size=6, stroke=1.5)+
+  geom_point(aes(Mid.Long.DD, Mid.Lat.DD), shape =21, colour = "black", fill = "white", size=8, stroke=1.5)+
+  geom_polygon(data=ls_poly.fort, aes(long, lat, group = group), colour = "black", fill = NA, size = 0.5)+
+#  geom_text(data = mnames, aes(x = long, y = lat, label = id), size = 4) +
+  scale_y_continuous(breaks = pretty_breaks(), name='Latitude') +
+  scale_x_continuous(breaks = pretty_breaks(), name='Longitude' )+
+  theme_bw() +
+  map_theme+
+  geom_text(aes(label=LOCATION))+
+  labs(caption=ann_data_access,
+       title='Lake Superior Stations Sampled',
+       subtitle=(paste('USGS bottom trawl assessment,', all.sites.current$YEAR+3)))
+
+ggsave(here('Plots and Tables/RVCAT','LSBS_Munits_SitestoSample.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
 
 ###############################################################################################
@@ -2096,34 +2762,33 @@ ns.os.species.maps <- ns.trawls.all.species %>%
            COMMON_NAME == 'Slimy Sculpin' |
            COMMON_NAME == 'Spoonhead Sculpin' |
            COMMON_NAME == 'Deepwater Sculpin' |
+           COMMON_NAME == 'Rainbow Smelt' |
+           COMMON_NAME == 'Longnose Sucker' |
            COMMON_NAME == 'lean Lake Trout' |
            COMMON_NAME == 'siscowet Lake Trout') %>%
   subset(Mid.Lat.DD >0)
 
-###################################################################
-pig<-ns.os.species.maps %>%
-  subset(COMMON_NAME == 'Bloater')
 
+###################################################################
 ##Cisco
 sp_map1<-ggplot(subset(ns.os.species.maps,
                        COMMON_NAME == 'Cisco')) +
   aes(Mid.Long.DD, Mid.Lat.DD) +
   scale_y_continuous(name='Latitude')+
-  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  scale_x_continuous(name='Longitude')+
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
   geom_point(subset(ns.os.species.maps, COMMON_NAME == 'Cisco'),
              mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=KGHA, color=KGHA), stroke=1.5)+
   scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), 
-                        limits=c(0,50), breaks=seq(0,50, by=10))+
+                        breaks = pretty_breaks(n=8)) +
   scale_color_continuous(high='red',low='deepskyblue2',
                          name=expression(underline('Biomass (kg per ha)')), 
-                         limits=c(0,50), breaks=seq(0,50, by=10))+
+                         breaks = pretty_breaks(n=8)) +
   theme_bw() +
   map_theme +
   theme(legend.box='horizontal')+
   guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
-  labs(title='Lake Superior Cisco Biomss',subtitle='USGS bottom trawl assessment',
+  labs(title='Lake Superior Cisco Biomass',subtitle='USGS bottom trawl assessment',
        caption=ann_data_access)+
   transition_manual(YEAR)
 
@@ -2135,7 +2800,7 @@ sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000,
                      height = 500,renderer = gifski_renderer(loop=F))
 sp_map1_gif
 
-anim_save(here('Plots and Tables/RVCAT','Animated_Cisco_station_biomass.gif'))
+anim_save(here('Plots and Tables/RVCAT','Animated_Cisco_biomass.gif'))
 
 
 sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
@@ -2165,24 +2830,24 @@ for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames t
   new_gif <- c(new_gif, combined)
 }
 new_gif
-image_write(new_gif, here('Plots and Tables/RVCAT','Animated_Cisco_ann_biomass_map_bars.gif'))
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_Cisco_biomass_map_bars.gif'))
 
 
+####################################################################
 ##Bloater
 sp_map1<-ggplot(subset(ns.os.species.maps,
                        COMMON_NAME == 'Bloater')) +
   aes(Mid.Long.DD, Mid.Lat.DD) +
   scale_y_continuous(name='Latitude')+
-  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  scale_x_continuous(name='Longitude')+
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
   geom_point(subset(ns.os.species.maps, COMMON_NAME == 'Bloater'),
              mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=KGHA, color=KGHA), stroke=1.5)+
   scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), 
-                        limits=c(0,50), breaks=seq(0,50, by=10))+
+                        breaks = pretty_breaks(n=8)) +
   scale_color_continuous(high='red',low='deepskyblue2',
                          name=expression(underline('Biomass (kg per ha)')), 
-                         limits=c(0,50), breaks=seq(0,50, by=10))+
+                         breaks = pretty_breaks(n=8)) +
   theme_bw() +
   map_theme +
   theme(legend.box='horizontal')+
@@ -2199,7 +2864,7 @@ sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000,
                      height = 500,renderer = gifski_renderer(loop=F))
 sp_map1_gif
 
-anim_save(here('Plots and Tables/RVCAT','Animated_Bloater_station_biomass.gif'))
+anim_save(here('Plots and Tables/RVCAT','Animated_Bloater_biomass.gif'))
 
 
 sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
@@ -2229,24 +2894,24 @@ for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames t
   new_gif <- c(new_gif, combined)
 }
 new_gif
-image_write(new_gif, here('Plots and Tables/RVCAT','Animated_Bloater_ann_biomass_map_bars.gif'))
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_Bloater_biomass_map_bars.gif'))
 
 
+####################################################################
 ##Lake Whitefish
 sp_map1<-ggplot(subset(ns.os.species.maps,
                        COMMON_NAME == 'Lake Whitefish')) +
   aes(Mid.Long.DD, Mid.Lat.DD) +
   scale_y_continuous(name='Latitude')+
-  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  scale_x_continuous(name='Longitude')+
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
   geom_point(subset(ns.os.species.maps, COMMON_NAME == 'Lake Whitefish'),
              mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=KGHA, color=KGHA), stroke=1.5)+
   scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), 
-                        limits=c(0,50), breaks=seq(0,50, by=10))+
+                        breaks = pretty_breaks(n=8)) +
   scale_color_continuous(high='red',low='deepskyblue2',
                          name=expression(underline('Biomass (kg per ha)')), 
-                         limits=c(0,50), breaks=seq(0,50, by=10))+
+                         breaks = pretty_breaks(n=8)) +
   theme_bw() +
   map_theme +
   theme(legend.box='horizontal')+
@@ -2263,7 +2928,7 @@ sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000,
                      height = 500,renderer = gifski_renderer(loop=F))
 sp_map1_gif
 
-anim_save(here('Plots and Tables/RVCAT','Animated_LWF_station_biomass.gif'))
+anim_save(here('Plots and Tables/RVCAT','Animated_LWF_biomass.gif'))
 
 
 sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
@@ -2293,24 +2958,24 @@ for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames t
   new_gif <- c(new_gif, combined)
 }
 new_gif
-image_write(new_gif, here('Plots and Tables/RVCAT','Animated_LWF_ann_biomass_map_bars.gif'))
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_LWF_biomass_map_bars.gif'))
 
 
+####################################################################
 ##Pygmy Whitefish
 sp_map1<-ggplot(subset(ns.os.species.maps,
                        COMMON_NAME == 'Pygmy Whitefish')) +
   aes(Mid.Long.DD, Mid.Lat.DD) +
   scale_y_continuous(name='Latitude')+
-  scale_x_continuous(name='Longitude',breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  scale_x_continuous(name='Longitude')+
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
   geom_point(subset(ns.os.species.maps, COMMON_NAME == 'Pygmy Whitefish'),
              mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=KGHA, color=KGHA), stroke=1.5)+
   scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), 
-                        limits=c(0,15), breaks=seq(0,15, by=3))+
+                        breaks = pretty_breaks(n=8)) +
   scale_color_continuous(high='red',low='deepskyblue2',
                          name=expression(underline('Biomass (kg per ha)')), 
-                         limits=c(0,15), breaks=seq(0,15, by=3))+
+                         breaks = pretty_breaks(n=8)) +
   theme_bw() +
   map_theme +
   theme(legend.box='horizontal')+
@@ -2327,7 +2992,7 @@ sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000,
                      height = 500,renderer = gifski_renderer(loop=F))
 sp_map1_gif
 
-anim_save(here('Plots and Tables/RVCAT','Animated_PWF_station_biomass.gif'))
+anim_save(here('Plots and Tables/RVCAT','Animated_PWF_biomass.gif'))
 
 
 sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
@@ -2357,7 +3022,454 @@ for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames t
   new_gif <- c(new_gif, combined)
 }
 new_gif
-image_write(new_gif, here('Plots and Tables/RVCAT','Animated_PWF_ann_biomass_map_bars.gif'))
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_PWF_biomass_map_bars.gif'))
+
+
+####################################################################
+##Rainbow Smelt
+sp_map1<-ggplot(subset(ns.os.species.maps,
+                       COMMON_NAME == 'Rainbow Smelt')) +
+  aes(Mid.Long.DD, Mid.Lat.DD) +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude')+
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(subset(ns.os.species.maps, COMMON_NAME == 'Rainbow Smelt'),
+             mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=KGHA, color=KGHA), stroke=1.5)+
+  scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), 
+                        breaks = pretty_breaks(n=8)) +
+  scale_color_continuous(high='red',low='deepskyblue2',
+                         name=expression(underline('Biomass (kg per ha)')), 
+                         breaks = pretty_breaks(n=8)) +
+  theme_bw() +
+  map_theme +
+  theme(legend.box='horizontal')+
+  guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
+  labs(title='Lake Superior Rainbow Smelt Biomass',subtitle='USGS bottom trawl assessment',
+       caption=ann_data_access)+
+  transition_manual(YEAR)
+
+sp_map1<-sp_map1+geom_text(aes(x=-85, y=48.75, label=paste('Year:',YEAR, sep='\n')), 
+                           size=8, family='serif')+
+  transition_manual(YEAR)
+
+sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000, 
+                     height = 500,renderer = gifski_renderer(loop=F))
+sp_map1_gif
+
+anim_save(here('Plots and Tables/RVCAT','Animated_RBS_biomass.gif'))
+
+
+sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
+                        COMMON_NAME == 'Rainbow Smelt')) +
+  aes(x=YEAR, y=mean, fill=mean)+
+  geom_bar(stat='identity')+
+  scale_fill_gradient(low='deepskyblue2', high='red')+
+  geom_point(size=3, color='black', shape=18)+
+  plot_theme +
+  theme(legend.position = "none") +
+  labs(x='Year', y='Mean biomass (kg per ha)',
+       title=' ', caption='  ', subtitle='  ')+
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(expand=c(0,0))+
+  transition_manual(YEAR, cumulative=T)
+
+sp_bars1_gif<-animate(sp_bars1, fps = 3, end_pause = 10, width = 350, 
+                      height = 500,renderer = gifski_renderer(loop=F))
+
+p_mgif<-image_read(sp_map1_gif)
+q_mgif<-image_read(sp_bars1_gif)
+
+new_gif<-image_append(c(p_mgif[1], q_mgif[1]))
+
+for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames to the # years (ie, if 50 years-> i in 2:50)
+  combined <- image_append(c(p_mgif[i], q_mgif[i]))
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_RBS_biomass_map_bars.gif'))
+
+
+####################################################################
+##Longnose Sucker
+sp_map1<-ggplot(subset(ns.os.species.maps,
+                       COMMON_NAME == 'Longnose Sucker')) +
+  aes(Mid.Long.DD, Mid.Lat.DD) +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude')+
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(subset(ns.os.species.maps, COMMON_NAME == 'Longnose Sucker'),
+             mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=KGHA, color=KGHA), stroke=1.5)+
+  scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), 
+                        breaks = pretty_breaks(n=8)) +
+  scale_color_continuous(high='red',low='deepskyblue2',
+                         name=expression(underline('Biomass (kg per ha)')), 
+                         breaks = pretty_breaks(n=8)) +
+  theme_bw() +
+  map_theme +
+  theme(legend.box='horizontal')+
+  guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
+  labs(title='Lake Superior Longnose Sucker Biomass',subtitle='USGS bottom trawl assessment',
+       caption=ann_data_access)+
+  transition_manual(YEAR)
+
+sp_map1<-sp_map1+geom_text(aes(x=-85, y=48.75, label=paste('Year:',YEAR, sep='\n')), 
+                           size=8, family='serif')+
+  transition_manual(YEAR)
+
+sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000, 
+                     height = 500,renderer = gifski_renderer(loop=F))
+sp_map1_gif
+
+anim_save(here('Plots and Tables/RVCAT','Animated_LongnoseSucker_biomass.gif'))
+
+
+sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
+                        COMMON_NAME == 'Longnose Sucker')) +
+  aes(x=YEAR, y=mean, fill=mean)+
+  geom_bar(stat='identity')+
+  scale_fill_gradient(low='deepskyblue2', high='red')+
+  geom_point(size=3, color='black', shape=18)+
+  plot_theme +
+  theme(legend.position = "none") +
+  labs(x='Year', y='Mean biomass (kg per ha)',
+       title=' ', caption='  ', subtitle='  ')+
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(expand=c(0,0))+
+  transition_manual(YEAR, cumulative=T)
+
+sp_bars1_gif<-animate(sp_bars1, fps = 3, end_pause = 10, width = 350, 
+                      height = 500,renderer = gifski_renderer(loop=F))
+
+p_mgif<-image_read(sp_map1_gif)
+q_mgif<-image_read(sp_bars1_gif)
+
+new_gif<-image_append(c(p_mgif[1], q_mgif[1]))
+
+for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames to the # years (ie, if 50 years-> i in 2:50)
+  combined <- image_append(c(p_mgif[i], q_mgif[i]))
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_LongnoseSucker_biomass_map_bars.gif'))
+
+
+####################################################################
+##Lean Lake Trout
+sp_map1<-ggplot(subset(ns.os.species.maps,
+                       COMMON_NAME == 'lean Lake Trout')) +
+  aes(Mid.Long.DD, Mid.Lat.DD) +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude')+
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(subset(ns.os.species.maps, COMMON_NAME == 'lean Lake Trout'),
+              mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=KGHA, color=KGHA), stroke=1.5)+
+  scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), 
+                        breaks = pretty_breaks(n=8)) +
+  scale_color_continuous(high='red',low='deepskyblue2',
+                         name=expression(underline('Biomass (kg per ha)')), 
+                         breaks = pretty_breaks(n=8)) +
+  theme_bw() +
+  map_theme +
+  theme(legend.box='horizontal')+
+  guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
+  labs(title='Lake Superior lean Lake Trout Biomass',subtitle='USGS bottom trawl assessment',
+       caption=ann_data_access)+
+  transition_manual(YEAR)
+
+sp_map1<-sp_map1+geom_text(aes(x=-85, y=48.75, label=paste('Year:',YEAR, sep='\n')), 
+                           size=8, family='serif')+
+  transition_manual(YEAR)
+
+sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000, 
+                     height = 500,renderer = gifski_renderer(loop=F))
+sp_map1_gif
+
+anim_save(here('Plots and Tables/RVCAT','Animated_leanLT_biomass.gif'))
+
+
+sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
+                        COMMON_NAME == 'lean Lake Trout')) +
+  aes(x=YEAR, y=mean, fill=mean)+
+  geom_bar(stat='identity')+
+  scale_fill_gradient(low='deepskyblue2', high='red')+
+  geom_point(size=3, color='black', shape=18)+
+  plot_theme +
+  theme(legend.position = "none") +
+  labs(x='Year', y='Mean biomass (kg per ha)',
+       title=' ', caption='  ', subtitle='  ')+
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(expand=c(0,0))+
+  transition_manual(YEAR, cumulative=T)
+
+sp_bars1_gif<-animate(sp_bars1, fps = 3, end_pause = 10, width = 350, 
+                      height = 500,renderer = gifski_renderer(loop=F))
+
+p_mgif<-image_read(sp_map1_gif)
+q_mgif<-image_read(sp_bars1_gif)
+
+new_gif<-image_append(c(p_mgif[1], q_mgif[1]))
+
+for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames to the # years (ie, if 50 years-> i in 2:50)
+  combined <- image_append(c(p_mgif[i], q_mgif[i]))
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_leanLT_biomass_map_bars.gif'))
+
+####################################################################
+##siscowet Lake Trout
+sp_map1<-ggplot(subset(ns.os.species.maps,
+                       COMMON_NAME == 'siscowet Lake Trout')) +
+  aes(Mid.Long.DD, Mid.Lat.DD) +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude')+
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_jitter(subset(ns.os.species.maps, COMMON_NAME == 'siscowet Lake Trout'),
+              mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=KGHA, color=KGHA), stroke=1.5)+
+  scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), 
+                        breaks = pretty_breaks(n=8)) +
+  scale_color_continuous(high='red',low='deepskyblue2',
+                         name=expression(underline('Biomass (kg per ha)')), 
+                         breaks = pretty_breaks(n=8)) +
+  theme_bw() +
+  map_theme +
+  theme(legend.box='horizontal')+
+  guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
+  labs(title='Lake Superior siscowet Lake Trout Biomass',subtitle='USGS bottom trawl assessment',
+       caption=ann_data_access)+
+  transition_manual(YEAR)
+
+sp_map1<-sp_map1+geom_text(aes(x=-85, y=48.75, label=paste('Year:',YEAR, sep='\n')), 
+                           size=8, family='serif')+
+  transition_manual(YEAR)
+
+sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000, 
+                     height = 500,renderer = gifski_renderer(loop=F))
+sp_map1_gif
+
+anim_save(here('Plots and Tables/RVCAT','Animated_siscowetLT_biomass.gif'))
+
+
+sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
+                        COMMON_NAME == 'siscowet Lake Trout')) +
+  aes(x=YEAR, y=mean, fill=mean)+
+  geom_bar(stat='identity')+
+  scale_fill_gradient(low='deepskyblue2', high='red')+
+  geom_point(size=3, color='black', shape=18)+
+  plot_theme +
+  theme(legend.position = "none") +
+  labs(x='Year', y='Mean biomass (kg per ha)',
+       title=' ', caption='  ', subtitle='  ')+
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(expand=c(0,0))+
+  transition_manual(YEAR, cumulative=T)
+
+sp_bars1_gif<-animate(sp_bars1, fps = 3, end_pause = 10, width = 350, 
+                      height = 500,renderer = gifski_renderer(loop=F))
+
+p_mgif<-image_read(sp_map1_gif)
+q_mgif<-image_read(sp_bars1_gif)
+
+new_gif<-image_append(c(p_mgif[1], q_mgif[1]))
+
+for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames to the # years (ie, if 50 years-> i in 2:50)
+  combined <- image_append(c(p_mgif[i], q_mgif[i]))
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_siscowetLT_biomass_map_bars.gif'))
+
+
+####################################################################
+##Slimy Sculpin
+sp_map1<-ggplot(subset(ns.os.species.maps,
+                       COMMON_NAME == 'Slimy Sculpin')) +
+  aes(Mid.Long.DD, Mid.Lat.DD) +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude')+
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_jitter(subset(ns.os.species.maps, COMMON_NAME == 'Slimy Sculpin'),
+              mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=KGHA, color=KGHA), stroke=1.5)+
+  scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), 
+                        breaks = pretty_breaks(n=8)) +
+  scale_color_continuous(high='red',low='deepskyblue2',
+                         name=expression(underline('Biomass (kg per ha)')), 
+                         breaks = pretty_breaks(n=8)) +
+  theme_bw() +
+  map_theme +
+  theme(legend.box='horizontal')+
+  guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
+  labs(title='Lake Superior Slimy Sculpin Biomass',subtitle='USGS bottom trawl assessment',
+       caption=ann_data_access)+
+  transition_manual(YEAR)
+
+sp_map1<-sp_map1+geom_text(aes(x=-85, y=48.75, label=paste('Year:',YEAR, sep='\n')), 
+                           size=8, family='serif')+
+  transition_manual(YEAR)
+
+sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000, 
+                     height = 500,renderer = gifski_renderer(loop=F))
+sp_map1_gif
+
+anim_save(here('Plots and Tables/RVCAT','Animated_SlimySculpin_biomass.gif'))
+
+
+sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
+                        COMMON_NAME == 'Slimy Sculpin')) +
+  aes(x=YEAR, y=mean, fill=mean)+
+  geom_bar(stat='identity')+
+  scale_fill_gradient(low='deepskyblue2', high='red')+
+  geom_point(size=3, color='black', shape=18)+
+  plot_theme +
+  theme(legend.position = "none") +
+  labs(x='Year', y='Mean biomass (kg per ha)',
+       title=' ', caption='  ', subtitle='  ')+
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(expand=c(0,0))+
+  transition_manual(YEAR, cumulative=T)
+
+sp_bars1_gif<-animate(sp_bars1, fps = 3, end_pause = 10, width = 350, 
+                      height = 500,renderer = gifski_renderer(loop=F))
+
+p_mgif<-image_read(sp_map1_gif)
+q_mgif<-image_read(sp_bars1_gif)
+
+new_gif<-image_append(c(p_mgif[1], q_mgif[1]))
+
+for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames to the # years (ie, if 50 years-> i in 2:50)
+  combined <- image_append(c(p_mgif[i], q_mgif[i]))
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_SlimySculpin_biomass_map_bars.gif'))
+
+
+####################################################################
+##Spoonhead Sculpin
+sp_map1<-ggplot(subset(ns.os.species.maps,
+                       COMMON_NAME == 'Spoonhead Sculpin')) +
+  aes(Mid.Long.DD, Mid.Lat.DD) +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude')+
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_jitter(subset(ns.os.species.maps, COMMON_NAME == 'Spoonhead Sculpin'),
+              mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=KGHA, color=KGHA), stroke=1.5)+
+  scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), 
+                        breaks = pretty_breaks(n=8)) +
+  scale_color_continuous(high='red',low='deepskyblue2',
+                         name=expression(underline('Biomass (kg per ha)')), 
+                         breaks = pretty_breaks(n=8)) +
+  theme_bw() +
+  map_theme +
+  theme(legend.box='horizontal')+
+  guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
+  labs(title='Lake Superior Spoonhead Sculpin Biomass',subtitle='USGS bottom trawl assessment',
+       caption=ann_data_access)+
+  transition_manual(YEAR)
+
+sp_map1<-sp_map1+geom_text(aes(x=-85, y=48.75, label=paste('Year:',YEAR, sep='\n')), 
+                           size=8, family='serif')+
+  transition_manual(YEAR)
+
+sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000, 
+                     height = 500,renderer = gifski_renderer(loop=F))
+sp_map1_gif
+
+anim_save(here('Plots and Tables/RVCAT','Animated_SpoonheadSculpin_biomass.gif'))
+
+
+sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
+                        COMMON_NAME == 'Spoonhead Sculpin')) +
+  aes(x=YEAR, y=mean, fill=mean)+
+  geom_bar(stat='identity')+
+  scale_fill_gradient(low='deepskyblue2', high='red')+
+  geom_point(size=3, color='black', shape=18)+
+  plot_theme +
+  theme(legend.position = "none") +
+  labs(x='Year', y='Mean biomass (kg per ha)',
+       title=' ', caption='  ', subtitle='  ')+
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(expand=c(0,0))+
+  transition_manual(YEAR, cumulative=T)
+
+sp_bars1_gif<-animate(sp_bars1, fps = 3, end_pause = 10, width = 350, 
+                      height = 500,renderer = gifski_renderer(loop=F))
+
+p_mgif<-image_read(sp_map1_gif)
+q_mgif<-image_read(sp_bars1_gif)
+
+new_gif<-image_append(c(p_mgif[1], q_mgif[1]))
+
+for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames to the # years (ie, if 50 years-> i in 2:50)
+  combined <- image_append(c(p_mgif[i], q_mgif[i]))
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_SpoonheadSculpin_biomass_map_bars.gif'))
+
+
+####################################################################
+##Deepwater Sculpin
+sp_map1<-ggplot(subset(ns.os.species.maps,
+                       COMMON_NAME == 'Deepwater Sculpin')) +
+  aes(Mid.Long.DD, Mid.Lat.DD) +
+  scale_y_continuous(name='Latitude')+
+  scale_x_continuous(name='Longitude')+
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_jitter(subset(ns.os.species.maps, COMMON_NAME == 'Deepwater Sculpin'),
+              mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=KGHA, color=KGHA), stroke=1.5)+
+  scale_size_continuous(name=expression(underline('Biomass (kg per ha)')), 
+                        breaks = pretty_breaks(n=8)) +
+  scale_color_continuous(high='red',low='deepskyblue2',
+                         name=expression(underline('Biomass (kg per ha)')), 
+                         breaks = pretty_breaks(n=8)) +
+  theme_bw() +
+  map_theme +
+  theme(legend.box='horizontal')+
+  guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
+  labs(title='Lake Superior Deepwater Sculpin Biomass',subtitle='USGS bottom trawl assessment',
+       caption=ann_data_access)+
+  transition_manual(YEAR)
+
+sp_map1<-sp_map1+geom_text(aes(x=-85, y=48.75, label=paste('Year:',YEAR, sep='\n')), 
+                           size=8, family='serif')+
+  transition_manual(YEAR)
+
+sp_map1_gif<-animate(sp_map1, fps = 3, end_pause = 10, width = 1000, 
+                     height = 500,renderer = gifski_renderer(loop=F))
+sp_map1_gif
+
+anim_save(here('Plots and Tables/RVCAT','Animated_DeepwaterSculpin_biomass.gif'))
+
+
+sp_bars1<-ggplot(subset(ns.annual.sum.by.species,
+                        COMMON_NAME == 'Deepwater Sculpin')) +
+  aes(x=YEAR, y=mean, fill=mean)+
+  geom_bar(stat='identity')+
+  scale_fill_gradient(low='deepskyblue2', high='red')+
+  geom_point(size=3, color='black', shape=18)+
+  plot_theme +
+  theme(legend.position = "none") +
+  labs(x='Year', y='Mean biomass (kg per ha)',
+       title=' ', caption='  ', subtitle='  ')+
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(expand=c(0,0))+
+  transition_manual(YEAR, cumulative=T)
+
+sp_bars1_gif<-animate(sp_bars1, fps = 3, end_pause = 10, width = 350, 
+                      height = 500,renderer = gifski_renderer(loop=F))
+
+p_mgif<-image_read(sp_map1_gif)
+q_mgif<-image_read(sp_bars1_gif)
+
+new_gif<-image_append(c(p_mgif[1], q_mgif[1]))
+
+for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames to the # years (ie, if 50 years-> i in 2:50)
+  combined <- image_append(c(p_mgif[i], q_mgif[i]))
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_DeepwaterSculpin_biomass_map_bars.gif'))
 
 ##############################################################################
 ############################################################################
@@ -2381,7 +3493,8 @@ cbay.trawls.all.species <- cbay %>%
 
 cbay.trawls.all.species <-complete(cbay.trawls.all.species, OP_ID, SPECIES, 
                                  fill=list(NUM=0, NOHA=0)) %>%
-  left_join(cbay.trawls) 
+  left_join(cbay.trawls) %>%
+  left_join(sci.names) 
 
 ##Calculate total number of species caught that year
 cbay.annual.total.fish <- cbay.trawls.all.species %>% 
@@ -2500,17 +3613,16 @@ cbay_map1<-ggplot(cbay.trawls.sum, aes(Mid.Long.DD, Mid.Lat.DD)) +
   scale_x_continuous(name='Longitude', limits=c(-91,-90.68))+
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
   geom_point(cbay.trawls.sum, mapping=aes(Mid.Long.DD, Mid.Lat.DD, 
-                      size=NOHA, color=NOHA), stroke=1.5)+
-  scale_size_continuous(name=expression(underline('Abundance (number per ha)')), 
-                        limits=c(0,30000), breaks=seq(0,30000, by=5000))+
+                      size=log(NOHA), color=log(NOHA)), stroke=1.5)+
+  scale_size_continuous(name=expression(underline('Log(number per ha)')), 
+                        breaks = pretty_breaks(n=6)) +
   scale_color_continuous(high='red',low='deepskyblue2',
-                         name=expression(underline('Abundance (number per ha)')), 
-                         limits=c(0,30000), 
-                         breaks=seq(0,30000, by=5000))+
+                         name=expression(underline('Log(number per ha)')), 
+                         breaks = pretty_breaks(n=6)) +
   map_theme+
   theme(legend.box='horizontal', 
-        legend.position = c(-91, 46.7))+
-  guides(size=guide_legend(reverse=T, keywidth=5000), color=guide_legend(reverse=T, keywidth=5000))+
+        legend.position = c(0.15, .75))+
+  guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
   labs(title='Lake Superior Chequamegon Bay Total Fish Abundance',
        subtitle='USGS bottom trawl assessment',
        caption=ann_data_access)+
@@ -2524,7 +3636,7 @@ cbay_map1<-cbay_map1+geom_text(aes(x=-90.7, y=46.7,
 cbay_map1_gif<-animate(cbay_map1, fps = 3, end_pause = 10, width = 1000, 
                      height = 500,renderer = gifski_renderer(loop=F))
 cbay_map1_gif
-anim_save(here('Plots and Tables/RVCAT','Animated_cbay_station_biomass_gif.gif'))
+anim_save(here('Plots and Tables/RVCAT','Animated_Cbay_abundance_map.gif'))
 
 
 cbay_bars1<-ggplot(cbay.annual.sum, aes(x=YEAR, y=mean, fill=mean))+
@@ -2551,8 +3663,145 @@ for(i in 2:45){ ##NOTE: as more years are added, need to increase the # frames t
   new_gif <- c(new_gif, combined)
 }
 new_gif
-image_write(new_gif, here('Plots and Tables/RVCAT','Animated_cbay_ann_biomass_map_bars.gif'))
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_Cbay_abundance_map_bars.gif'))
 
+
+############################################################################################
+##C-Bay single species annimated plots
+##Rainbow Smelt
+cbay_map1<-ggplot(subset(cbay.trawls.all.species,
+                       COMMON_NAME == 'Rainbow Smelt')) +
+  aes(Mid.Long.DD, Mid.Lat.DD) +
+  scale_y_continuous(name='Latitude', breaks=seq(46.6,46.7, by=.1),limits=c(46.58,46.72), 
+                     labels=c(46.6, 46.7))+
+  scale_x_continuous(name='Longitude', limits=c(-91,-90.68))+
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(subset(cbay.trawls.all.species, COMMON_NAME == 'Rainbow Smelt'),
+             mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=log(NOHA), color=log(NOHA)), stroke=1.5)+
+  scale_size_continuous(name=expression(underline('Log(number per ha)')), 
+                        breaks = pretty_breaks()) +
+  scale_color_continuous(high='red',low='deepskyblue2',
+                         name=expression(underline('Log(number per ha)')), 
+                         breaks = pretty_breaks()) +
+  theme_bw() +
+  map_theme +
+  theme(legend.box='horizontal', 
+        legend.position = c(0.15, .75))+
+  guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
+  labs(title='Lake Superior Chequamegon Bay Rainbow Smelt Abundance',
+       subtitle='USGS bottom trawl assessment',
+       caption=ann_data_access)+
+  transition_manual(YEAR)
+
+cbay_map1<-cbay_map1+geom_text(aes(x=-90.7, y=46.7, 
+                               label=paste('Year:',YEAR, sep='\n')), 
+                               size=8, family='serif')+
+  transition_manual(YEAR)
+
+cbay_map1_gif<-animate(cbay_map1, fps = 3, end_pause = 10, width = 1000, 
+                     height = 500,renderer = gifski_renderer(loop=F))
+cbay_map1_gif
+
+anim_save(here('Plots and Tables/RVCAT','Animated_Cbay_RBS_abundance.gif'))
+
+
+cbay_bars1<-ggplot(subset(cbay.annual.sum.by.species,
+                        COMMON_NAME == 'Rainbow Smelt')) +
+  aes(x=YEAR, y=mean, fill=mean)+
+  geom_bar(stat='identity')+
+  scale_fill_gradient(low='deepskyblue2', high='red')+
+  geom_point(size=3, color='black', shape=18)+
+  plot_theme +
+  theme(legend.position = "none") +
+  labs(x='Year', y='Mean abundance (number per ha)',
+       title=' ', caption='  ', subtitle='  ')+
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(expand=c(0,0), breaks = pretty_breaks(), labels = scales::comma) +
+  transition_manual(YEAR, cumulative=T)
+
+cbay_bars1_gif<-animate(cbay_bars1, fps = 3, end_pause = 10, width = 350, 
+                      height = 500,renderer = gifski_renderer(loop=F))
+cbay_bars1
+
+p_mgif<-image_read(cbay_map1_gif)
+q_mgif<-image_read(cbay_bars1_gif)
+
+new_gif<-image_append(c(p_mgif[1], q_mgif[1]))
+
+for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames to the # years (ie, if 50 years-> i in 2:50)
+  combined <- image_append(c(p_mgif[i], q_mgif[i]))
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_Cbay_RBS_abundance_map_bars.gif'))
+
+#####################################################################################
+##Yellow Perch
+cbay_map1<-ggplot(subset(cbay.trawls.all.species,
+                         COMMON_NAME == 'Yellow Perch')) +
+  aes(Mid.Long.DD, Mid.Lat.DD) +
+  scale_y_continuous(name='Latitude', breaks=seq(46.6,46.7, by=.1),limits=c(46.58,46.72), 
+                     labels=c(46.6, 46.7))+
+  scale_x_continuous(name='Longitude', limits=c(-91,-90.68))+
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
+  geom_point(subset(cbay.trawls.all.species, COMMON_NAME == 'Yellow Perch'),
+             mapping=aes(Mid.Long.DD, Mid.Lat.DD, size=log(NOHA), color=log(NOHA)), stroke=1.5)+
+  scale_size_continuous(name=expression(underline('Log(number per ha)')), 
+                        breaks = pretty_breaks()) +
+  scale_color_continuous(high='red',low='deepskyblue2',
+                         name=expression(underline('Log(number per ha)')), 
+                         breaks = pretty_breaks()) +
+  theme_bw() +
+  map_theme +
+  theme(legend.box='horizontal', 
+        legend.position = c(0.15, .75))+
+  guides(size=guide_legend(reverse=T, keywidth=5), color=guide_legend(reverse=T, keywidth=5))+
+  labs(title='Lake Superior Chequamegon Bay Yellow Perch Abundance',
+       subtitle='USGS bottom trawl assessment',
+       caption=ann_data_access)+
+  transition_manual(YEAR)
+
+cbay_map1<-cbay_map1+geom_text(aes(x=-90.7, y=46.7, 
+                                   label=paste('Year:',YEAR, sep='\n')), 
+                               size=8, family='serif')+
+  transition_manual(YEAR)
+
+cbay_map1_gif<-animate(cbay_map1, fps = 3, end_pause = 10, width = 1000, 
+                       height = 500,renderer = gifski_renderer(loop=F))
+cbay_map1_gif
+
+anim_save(here('Plots and Tables/RVCAT','Animated_Cbay_YPerch_abundance.gif'))
+
+
+cbay_bars1<-ggplot(subset(cbay.trawls.all.species,
+                          COMMON_NAME == 'Yellow Perch')) +
+  aes(x=YEAR, y=NOHA, fill=NOHA)+
+  geom_bar(stat='identity')+
+  scale_fill_gradient(low='deepskyblue2', high='red')+
+  geom_point(size=3, color='black', shape=18)+
+  plot_theme +
+  theme(legend.position = "none") +
+  labs(x='Year', y='Mean abundance (number per ha)',
+       title=' ', caption='  ', subtitle='  ')+
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(expand=c(0,0))+
+  transition_manual(YEAR, cumulative=T)
+
+cbay_bars1_gif<-animate(cbay_bars1, fps = 3, end_pause = 10, width = 350, 
+                        height = 500,renderer = gifski_renderer(loop=F))
+cbay_bars1
+
+p_mgif<-image_read(cbay_map1_gif)
+q_mgif<-image_read(cbay_bars1_gif)
+
+new_gif<-image_append(c(p_mgif[1], q_mgif[1]))
+
+for(i in 2:48){ ##NOTE: as more years are added, need to increase the # frames to the # years (ie, if 50 years-> i in 2:50)
+  combined <- image_append(c(p_mgif[i], q_mgif[i]))
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+image_write(new_gif, here('Plots and Tables/RVCAT','Animated_Cbay_YPerch_abundance_map_bars.gif'))
 
 #####Age-1 analyses#########################################################################
 ############################################################################################
@@ -2561,13 +3810,15 @@ image_write(new_gif, here('Plots and Tables/RVCAT','Animated_cbay_ann_biomass_ma
 ##Lengths file to evaluate Age-1 densities##################################################
 ##pull out nearshore, TARGET = 2 data for a normal full survey year
 
-ns<-subset(all.data, TARGET==2 & YEAR >1977)
+##ns<-subset(all.data, TARGET==2 & YEAR >1977)
 
-##ns<-subset(all.data, TARGET==2 & YEAR >1973 &  M_UNIT == "WI2")
+##ns<-subset(all.data, TARGET==2 & YEAR >1977 & Country == "USA")
 
 lengths<-read.csv(here('Data','LENGTHS_RVCAT.csv')) %>%
   select(OP_ID,SPECIES,LENGTH,EXP_N) 
 
+
+###Expanded age-1 length cutoffs to deal with faster observed growth in 2021
 age1.ns <- ns.trawls %>%
   select(OP_ID) %>% 
   left_join(lengths) %>% 
@@ -2581,6 +3832,23 @@ age1.ns <- ns.trawls %>%
   select(OP_ID,SPECIES,LENGTH,EXP_N) %>%
   group_by(OP_ID,SPECIES) %>%
   summarise(NUM = sum(EXP_N)) 
+
+
+###Traditional age-1 length cutoffs
+age1.ns <- ns.trawls %>%
+  select(OP_ID) %>% 
+  left_join(lengths) %>% 
+  subset(SPECIES == '109' & LENGTH <101 |
+           SPECIES == '202' & LENGTH <141 |
+           SPECIES == '204' & LENGTH <131 |
+           SPECIES == '203' & LENGTH <161 |
+           SPECIES == '317' & LENGTH <226) %>%
+  select(OP_ID,SPECIES,LENGTH,EXP_N) %>%
+  full_join(ns.trawls) %>% 
+  select(OP_ID,SPECIES,LENGTH,EXP_N) %>%
+  group_by(OP_ID,SPECIES) %>%
+  summarise(NUM = sum(EXP_N)) 
+
 
 age1.ns.zeros <- age1.ns %>%
   pivot_wider(names_from = SPECIES, values_from = NUM) %>%
@@ -2644,9 +3912,9 @@ age1.annual.sum <- age1 %>%
 age1.table<-age1.annual.sum %>%
   pivot_wider(names_from = COMMON_NAME, values_from = age1.mean) %>%
   mutate('Year class' = YEAR-1) %>%
-  select(YEAR, 'Year class', c(2:9)) %>%
+  select(YEAR, 'Year class', c(3:9)) %>%
   distinct(YEAR, .keep_all = TRUE) %>%
-  round(1) 
+  round(3) 
 
 write.xlsx(age1.table, here('Plots and Tables/RVCAT','export_age1_annual_summary.xlsx'), row.names = F)
 
@@ -2655,12 +3923,11 @@ write.xlsx(age1.table, here('Plots and Tables/RVCAT','export_age1_annual_summary
 #################################################################################################
 ##Age -1 plots
 
-##plot of recent age-1 ciscoe densities
 #################################################################################################
 age1.annual.sum.2020 <- age1.annual.sum %>%
   subset(YEAR<2020)
 
-
+##Plot of age-1 Bloater, Cisco, Kiyi
 ggplot(subset(age1.annual.sum, COMMON_NAME=='Bloater'|COMMON_NAME=='Cisco'|COMMON_NAME=='Kiyi')) + 
   aes(x=YEAR-1, y = age1.mean) + 
   geom_point(size=6)+
@@ -2680,23 +3947,45 @@ ggplot(subset(age1.annual.sum, COMMON_NAME=='Bloater'|COMMON_NAME=='Cisco'|COMMO
 ggsave(here('Plots and Tables/RVCAT','ns_os_Age1_ciscoes.png'), dpi = 300, width = 40, height = 20, units = "cm")
 
 
-##Plot of age-1 Cisco
-
-ggplot(subset(age1.annual.sum.2020, COMMON_NAME == "Cisco")) + 
-  aes(x=YEAR-1, y = age1.mean, fill = FCO) + 
-  geom_hline(yintercept=0, size = 1, colour = 'black') +
-  geom_hline(yintercept=10, size = 1.5, colour = 'sienna2') +
-  geom_point(shape = 21, size=6)+
+##Plot of age-1 Bloater, Cisco, Lake whitefish
+ggplot(subset(age1.annual.sum, COMMON_NAME=='Bloater'|COMMON_NAME=='Cisco'|COMMON_NAME=='Lake Whitefish')) + 
+  aes(x=YEAR-1, y = age1.mean) + 
+  geom_point(size=6)+
   geom_segment(aes(x=YEAR-1, xend=YEAR-1, y=0, yend=age1.mean), size=1, color='black')+
-  geom_hline(yintercept=100, size = 1.5, colour = 'sienna2') +
+  facet_grid(COMMON_NAME~., scales='free_y')+
+  plot_theme+
+  theme(axis.text=element_text(size=20, family='serif'),
+          axis.title=element_text(size=20, family='serif'),
+        strip.text=element_text(size=20, family='serif')
+        ) +
+  labs(x='Year Class', y='Lakewide mean abundance (fish per ha)', caption=ann_data_access,
+       title='Lake Superior Age-1 Bloater, Cisco, and Lake Whitefish Abundance',
+       subtitle='USGS bottom trawl assessment in USA waters, 1978')+
+  scale_x_continuous(breaks = pretty_breaks())+
+  scale_y_continuous(breaks = pretty_breaks(5), 
+                     expand = expansion(mult = c(0, .1)))+
+  theme(panel.spacing=unit(2,'lines'))+
+  coord_cartesian(clip='off')+
+  geom_hline(yintercept=0, color='black', size=1)
+
+ggsave(here('Plots and Tables/RVCAT','ns_os_Age1_ciscoes_LWF.png'), dpi = 300, width = 40, height = 30, units = "cm")
+
+##Plot of age-1 Cisco
+ggplot(subset(age1.annual.sum, COMMON_NAME == "Cisco")) + 
+  aes(x=YEAR-1, y = age1.mean) + 
+  geom_hline(yintercept=0, size = 1, colour = 'black') +
+#  geom_hline(yintercept=10, size = 1.5, colour = 'sienna2') +
+  geom_point(shape = 21, size=6, fill = 'gray35')+
+  geom_segment(aes(x=YEAR-1, xend=YEAR-1, y=0, yend=age1.mean), size=1, color='black')+
+  #geom_hline(yintercept=100, size = 1.5, colour = 'sienna2') +
   scale_x_continuous(breaks = pretty_breaks())+
   scale_y_continuous(breaks = pretty_breaks(5), 
                      expand = expansion(mult = c(0.05, .1)))+
   plot_theme+
-  scale_fill_manual(name='FCO\nMetric Met?', values=c('deeppink1','deepskyblue2'))+
-  theme(legend.box='horizontal',
-        legend.position = c(0.8, 0.8),
-        legend.title.align=0.5) +
+#  scale_fill_manual(name='FCO\nMetric Met?', values=c('deeppink1','deepskyblue2'))+
+#  theme(legend.box='horizontal',
+#        legend.position = c(0.8, 0.8),
+#        legend.title.align=0.5) +
   labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
      title='Lake Superior Age-1 Cisco Abundance',
      subtitle='USGS bottom trawl assessment')
@@ -2709,18 +3998,18 @@ ggsave(here('Plots and Tables/RVCAT','ns_Age1_cisco.png'), dpi = 300, width = 40
 ##Plot of age-1 Bloater
 
 ggplot(subset(age1.annual.sum, COMMON_NAME == "Bloater")) + 
-  aes(x=YEAR-1, y = age1.mean, fill = FCO) + 
-  geom_point(shape = 21, size=6)+
+  aes(x=YEAR-1, y = age1.mean) + 
+  geom_point(shape = 21, size=6, fill = 'gray35')+
   geom_segment(aes(x=YEAR-1, xend=YEAR-1, y=0, yend=age1.mean), size=1, color='black')+
-  geom_hline(yintercept=10, size = 1.5, colour = 'sienna2') +
+#  geom_hline(yintercept=10, size = 1.5, colour = 'sienna2') +
   scale_x_continuous(breaks = pretty_breaks())+
   scale_y_continuous(breaks = pretty_breaks(5), 
                      expand = expansion(mult = c(0, .1)))+
   plot_theme+
-  scale_fill_manual(name='FCO\nMetric Met?', values=c('deeppink1','deepskyblue2'))+
-  theme(legend.box='horizontal',
-        legend.position = c(0.8, 0.8), 
-        legend.title.align=0.5) +
+#  scale_fill_manual(name='FCO\nMetric Met?', values=c('deeppink1','deepskyblue2'))+
+#  theme(legend.box='horizontal',
+#        legend.position = c(0.8, 0.8), 
+#        legend.title.align=0.5) +
   labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
        title='Lake Superior Age-1 Bloater Abundance',
        subtitle='USGS bottom trawl assessment')
@@ -2730,19 +4019,19 @@ ggsave(here('Plots and Tables/RVCAT','ns_age1_bloater.png'), dpi = 300, width = 
 #################################################################################################
 ##Plot of age-1 Lake Whitefish
 
-ggplot(subset(age1.annual.sum.2020, COMMON_NAME == "Lake Whitefish")) + 
-  aes(x=YEAR-1, y = age1.mean, fill = FCO) + 
-  geom_hline(yintercept=4.5, size = 1.5, colour = 'sienna2') +
-  geom_point(shape = 21, size=6)+
+ggplot(subset(age1.annual.sum, COMMON_NAME == "Lake Whitefish")) + 
+  aes(x=YEAR-1, y = age1.mean) + 
+#  geom_hline(yintercept=4.5, size = 1.5, colour = 'sienna2') +
+  geom_point(shape = 21, size=6, fill = 'gray35')+
   geom_segment(aes(x=YEAR-1, xend=YEAR-1, y=0, yend=age1.mean), size=1, color='black')+
   scale_x_continuous(breaks = pretty_breaks())+
   scale_y_continuous(breaks = pretty_breaks(5), 
                      expand = expansion(mult = c(0, .1)))+
   plot_theme+
   scale_fill_manual(name='FCO\nMetric Met?', values=c('deeppink1','deepskyblue2'))+
-  theme(legend.box='horizontal',
-        legend.position = c(0.8, 0.8), 
-        legend.title.align=0.5) +
+#  theme(legend.box='horizontal',
+#        legend.position = c(0.8, 0.8), 
+#        legend.title.align=0.5) +
   labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
        title='Lake Superior Age-1 Lake Whitefish Abundance',
        subtitle='USGS bottom trawl assessment')
@@ -2760,7 +4049,7 @@ ggplot(subset(age1.annual.sum, COMMON_NAME=='lean Lake Trout'|
   facet_grid(COMMON_NAME~., scales='free_y')+
   plot_theme+
   labs(x='Year Class', y='Lakewide mean abundance (n per ha)', caption=ann_data_access,
-       title='Lake Superior Age-1 Lake Trout Abundance',
+       title='Lake Superior Juvenile (<age-3) Lake Trout Abundance',
        subtitle='USGS bottom trawl assessment')+
   scale_x_continuous(breaks = pretty_breaks())+
   scale_y_continuous(breaks = pretty_breaks(5), 
@@ -2865,9 +4154,8 @@ ggplot(subset(age1.pa,
               )) +
   aes(Mid.Long.DD, Mid.Lat.DD) +
   theme_bw() +
-  scale_y_continuous()+
-  scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  scale_x_continuous(breaks = pretty_breaks(), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), name="Latitude")+
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
   geom_point(subset(age1.pa, 
                     COMMON_NAME=='Cisco' & YEAR == max(age1$YEAR) |
@@ -2879,7 +4167,7 @@ ggplot(subset(age1.pa,
   map_theme+
   geom_text(aes(label=LOCATION))+
   labs(x='Longitude', y='Latitude',
-       title='Lake Superior Age-1 Ciscoe Occurrence',
+       title='Lake Superior Age-1 Bloater, Cisco, and Kiyi Occurrence',
        subtitle=(paste('USGS bottom trawl assessment,', max(age1.pa$YEAR))), 
        caption=ann_data_access)
 
@@ -2895,9 +4183,8 @@ a1.map.inset<-ggplot(subset(age1.pa,
                    )) +
   aes(Mid.Long.DD, Mid.Lat.DD) +
   theme_bw() +
-  scale_y_continuous()+
-  scale_x_continuous(breaks=c(-93,-92,-91,-90,-89,-88,-87,-86,-85,-84), 
-                     labels=c('-93','-92','-91','-90','-89','-88','-87','-86','-85','-84'))+
+  scale_x_continuous(breaks = pretty_breaks(), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), name="Latitude")+
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+
   geom_point(subset(age1.pa, 
                     COMMON_NAME=='Cisco' & YEAR == max(age1$YEAR) |
@@ -2909,43 +4196,17 @@ a1.map.inset<-ggplot(subset(age1.pa,
   map_theme+
   geom_text(aes(label=LOCATION))
 
-####stacked bar plot for age-1 bloater, ciscoe, kiyi
-ggplot(subset(age1.pa, 
-              COMMON_NAME=='Cisco' & YEAR == max(age1$YEAR) |
-              COMMON_NAME=='Bloater' & YEAR == max(age1$YEAR) |
-              COMMON_NAME=='Kiyi' & YEAR == max(age1$YEAR) |
-              COMMON_NAME=='Lake Whitefish' & YEAR == max(age1$YEAR)   
-              )) +
-  aes(x=reorder(LOCATION, NOHA), y = NOHA, fill=COMMON_NAME) + 
-#  aes(x=LOCATION, y = NOHA, fill=COMMON_NAME) + 
-  geom_bar(stat='identity', position='stack')+
-##  aes(x=fct_reorder(station))+
-## annotation_custom(ggplotGrob(a1.map.inset), xmin=20, xmax=100, ymin=35, ymax=240)+
-  plot_theme+
-  theme(legend.position='bottom',
-        axis.text.x=element_text(angle=90, hjust=1, vjust=0.5, size=12))+
-  labs(x='Station', 
-       y='Abundance (number per ha)',
-       title='Lake Superior Age-1 Ciscoe Occurrence',
-       subtitle=(paste('USGS bottom trawl assessment,', max(age1.pa$YEAR))), 
-       caption=ann_data_access) +
-  scale_y_continuous(breaks = pretty_breaks(5), 
-                     expand = expansion(mult = c(0, .1)))+
-  scale_fill_manual( name=' ', values=c('palegreen3','sienna1', 'deepskyblue2', 'lightpink3'))+
-  theme(legend.position = "none")
-#  theme(legend.position = c(0.8,0.8))
-
-ggsave(here('Plots and Tables/RVCAT','ns_age1_ciscoes_bydate.png'), height=20, width=40, dpi=300, units='cm')
 
 
 #########################################################################################################
-##Pie map of age-1 bloater, cisco, and kiyi  #########
+##Pie map of age-1 bloater, cisco, Lake Whitefish and kiyi  #########
 #########################################################################################################
 #################################################################################################
 age1.pie <- age1 %>%
   select(OP_ID,YEAR,LOCATION,COMMON_NAME,NOHA,Mid.Lat.DD, Mid.Long.DD) %>%
   pivot_wider(names_from = COMMON_NAME, values_from = NOHA, values_fill = 0) %>%
-  subset(Mid.Lat.DD >0) 
+  subset(Mid.Lat.DD >0) %>%
+  subset
 
 ##%>%
   ##subset(YEAR>1988)
@@ -2959,8 +4220,8 @@ ls_poly.fort <- fortify(ls_poly)
 ggplot(subset(age1.pie, YEAR == max(age1.pie$YEAR))) +
   aes(Mid.Long.DD, Mid.Lat.DD) +
   geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ 
-  scale_x_continuous(breaks = pretty_breaks(), limits = c(-91.2, -90.2), name="Longitude") +
-  scale_y_continuous(breaks = pretty_breaks(), limits = c(46.5, 47.2), name="Latitude")+
+  scale_x_continuous(breaks = pretty_breaks(), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), name="Latitude")+
   geom_scatterpie(aes(x=Mid.Long.DD, y=Mid.Lat.DD), 
                   data=subset(age1.pie, YEAR == max(age1.pie$YEAR)),
                   cols= c("Bloater", "Cisco", "Kiyi", 'Lake Whitefish'),
@@ -2970,15 +4231,93 @@ ggplot(subset(age1.pie, YEAR == max(age1.pie$YEAR))) +
   scale_fill_manual( name=' ', values=c('palegreen3','sienna1', 'deepskyblue2', 'lightpink3'))+
 #  scale_fill_brewer(palette="Accent") +
   theme(legend.title = element_blank(),
-        legend.position = c(.1, .85),
-        legend.text=element_text(size=16, family='serif')) +
+        legend.position = c(.1, .85)) +
   labs(x='Longitude', y='Latitude',
-        title='Lake Superior Age-1 Ciscoe Distributions',
+        title='Lake Superior Age-1 Bloater, Cisco, and Lake Whitefish Occurrence',
         subtitle=(paste('USGS bottom trawl assessment,', max(age1.pa$YEAR))), 
         caption=ann_data_access)
 
 ggsave(here('Plots and Tables/RVCAT','CurrentYear_age1_piemap.png'), 
        height=20, width=40, dpi=300, units='cm')
+
+
+##Age-1 pie map for bloater, cisco, Lake Whitefish for current year
+a1b.map.inset<-ggplot(subset(age1.pie, YEAR == max(age1.pie$YEAR))) +
+  aes(Mid.Long.DD, Mid.Lat.DD) +
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ 
+  scale_x_continuous(breaks = pretty_breaks(), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), name="Latitude")+
+  geom_scatterpie(aes(x=Mid.Long.DD, y=Mid.Lat.DD), 
+                  data=subset(age1.pie, YEAR == max(age1.pie$YEAR)),
+                  cols= c("Bloater", "Cisco", 'Lake Whitefish'),
+                  pie_scale = 0.75) +
+  theme_bw() +
+  map_theme +
+  scale_fill_manual( name=' ', values=c('palegreen3','sienna1', 'lightpink3'))+
+#    scale_fill_brewer(palette="Accent") +
+  theme(legend.title = element_blank(),
+        legend.position = c(.1, .85),
+        legend.text=element_text(size=16, family='serif')) +
+  labs(x='Longitude', y='Latitude',
+       title='Lake Superior Age-1 Bloater, Cisco, and Kiyi Distributions',
+       subtitle=(paste('USGS bottom trawl assessment,', max(age1.pa$YEAR))), 
+       caption=ann_data_access)
+
+ggsave(here('Plots and Tables/RVCAT','CurrentYear_age1_piemap.png'), 
+       height=20, width=40, dpi=300, units='cm')
+
+##Age-1 pie map for bloater, cisco, Lake Whitefish for current year for inset into stacked bar plot below
+a1c.map.inset<-ggplot(subset(age1.pie, YEAR == max(age1.pie$YEAR))) +
+  aes(Mid.Long.DD, Mid.Lat.DD) +
+  geom_path(data=ls_poly.fort, aes(long, lat, group = group), size = 0.5)+ 
+  scale_x_continuous(breaks = pretty_breaks(), name="Longitude") +
+  scale_y_continuous(breaks = pretty_breaks(), name="Latitude")+
+  geom_scatterpie(aes(x=Mid.Long.DD, y=Mid.Lat.DD), 
+                  data=subset(age1.pie, YEAR == max(age1.pie$YEAR)),
+                  cols= c("Bloater", "Cisco", 'Lake Whitefish'),
+                  pie_scale = 0.75) +
+  theme_bw() +
+  map_theme +
+  scale_fill_manual( name=' ', values=c('palegreen3','sienna1', 'lightpink3'))+
+  #    scale_fill_brewer(palette="Accent") +
+  theme(legend.title = element_blank(),
+        legend.position = c(.15, .85),
+        legend.text=element_text(size=16, family='serif')) +
+  labs(x='Longitude', y='Latitude')
+
+#ggsave(here('Plots and Tables/RVCAT','CurrentYear_age1_piemapc.png'), 
+#       height=20, width=40, dpi=300, units='cm')
+
+
+####stacked bar plot for age-1 bloater, ciscoe, Lake Whitefish
+ggplot(subset(age1.pa, 
+              COMMON_NAME=='Cisco' & YEAR == max(age1$YEAR) |
+                COMMON_NAME=='Bloater' & YEAR == max(age1$YEAR) |
+                #         COMMON_NAME=='Kiyi' & YEAR == max(age1$YEAR) |
+                COMMON_NAME=='Lake Whitefish' & YEAR == max(age1$YEAR) 
+              )) +
+  aes(x=reorder(LOCATION, NOHA), y = NOHA, fill=COMMON_NAME) + 
+  #  aes(x=LOCATION, y = NOHA, fill=COMMON_NAME) + 
+  geom_bar(stat='identity', position='stack')+
+  ##  aes(x=fct_reorder(station))+
+  annotation_custom(ggplotGrob(a1c.map.inset), xmin=1, xmax=35,  ymin=35, ymax=170)+
+  plot_theme+
+  theme(legend.position='bottom',
+        axis.text.x=element_text(angle=90, hjust=1, vjust=0.5, size=12))+
+  labs(x='Station', 
+       y='Abundance (number per ha)',
+       title='Lake Superior Age-1 Bloater, Cisco, and Lake Whitefish Abundance',
+       subtitle='USGS bottom trawl assessment in USA waters, 2021', 
+
+      ## subtitle=(paste('USGS bottom trawl assessment,', max(age1.pa$YEAR))), 
+       caption=ann_data_access) +
+  scale_y_continuous(breaks = pretty_breaks(5), 
+                     expand = expansion(mult = c(0, .1)))+
+  scale_fill_manual( name=' ', values=c('palegreen3','sienna1', 'lightpink3'))+
+  theme(legend.position = "none")
+#  theme(legend.position = c(0.8,0.8))
+
+ggsave(here('Plots and Tables/RVCAT','ns_age1_ciscoes_bydate.png'), height=20, width=40, dpi=300, units='cm')
 
 ####################################################################################
 ##Animated figure showing each year at a time
@@ -2995,7 +4334,7 @@ age1.pie.map1<-ggplot(age1.pie, aes(Mid.Long.DD, Mid.Lat.DD)) +
         legend.position = c(.1, .85),
         legend.text=element_text(size=16, family='serif')) +
   labs(x='Longitude', y='Latitude',
-       title='Lake Superior Age-1 Ciscoe Distributions',
+       title='Lake Superior Age-1 Bloater, Cisco, and Kiyi Distributions',
        subtitle='USGS bottom trawl assessment',
        caption=ann_data_access)
 
@@ -3129,7 +4468,7 @@ ggsave(here('Plots and Tables/RVCAT','ns_periods_comparison.png'), dpi = 300, wi
 
 animate.map.catch <- all.data%>%
 ##  subset(YEAR >=2009) %>%
-  subset(YEAR==max(YEAR-1)) %>%
+  subset(YEAR==max(YEAR)) %>%
   subset(TARGET==2|TARGET==117|TARGET==118) %>%
          #|TARGET ==106) %>%
   select(OP_ID, OP_DATE, TIME, YEAR, TARGET, LOCATION, Mid.Long.DD, Mid.Lat.DD, SPECIES, NUM, WT, NOHA, KGHA) %>%
@@ -3362,9 +4701,9 @@ ns.bcr <- export.annual.sum.by.species %>%
   arrange(YEAR, mean.kg) 
 
 p<-ggplot(ns.bcr, aes(rank, group = COMMON_NAME))+ 
-  geom_tile(aes(y=mean.kg/2, height=mean.kg, width=0.9, fill=COMMON_NAME))+
+  geom_tile(aes(y=mean.kg/2, height=mean.kgha, width=0.9, fill=COMMON_NAME))+
   geom_text(aes(y=0, label=paste(COMMON_NAME, "  ")), size=5, vjust=0.2, hjust=1)+
-#  geom_text(aes(y=mean.kg, label = Value_lbl), size = 5, hjust=0) +
+#  geom_text(aes(y=mean.kgha, label = Value_lbl), size = 5, hjust=0) +
   coord_flip(clip='off', expand=F)+
   scale_y_continuous(expand=c(0,0), 
                      breaks = pretty_breaks()) +
@@ -3527,7 +4866,7 @@ ggplot(subset(dfishy1, FISH == "Kiyi" & trawl == "Bottom trawl")) +
   scale_x_continuous(expand=c(0,0), limits = c(0, 410), breaks=c(0,100, 200, 300, 400), 
                      labels=c('0', '100', '200', '300', '400'))+
   scale_y_continuous(expand=c(0,0))+
-  labs( x='Fish depth of capture (m)', y='Relative density',
+  labs( x='Fish bathymetric depth (m)', y='Relative density',
         title='Lake Superior Kiyi Depth Distribution',
         subtitle=' ',
         caption=ann_data_access) +
@@ -3537,6 +4876,50 @@ ggplot(subset(dfishy1, FISH == "Kiyi" & trawl == "Bottom trawl")) +
 
 ggsave(here('Plots and Tables/RVCAT','kiyi_BottomTrawlCaptures.png'), height=20, width=40, dpi=300, units='cm')
 
+ggplot(subset(dfishy1, FISH == "Bloater" & trawl == "Bottom trawl")) +
+  aes(x=avgdepth, y = ..scaled.., weight=Fdensity/Fdensity.grp) + 
+  geom_density(alpha=0.4, fill = 'deepskyblue2') +
+  geom_vline(data = subset(dfishy1.sum, FISH == "Bloater" & trawl == "Bottom trawl"),
+             aes(xintercept=bdepth.mean), color='black', size=1.2, show.legend = FALSE) +
+  geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
+  geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
+  plot_theme + 
+  theme(legend.position = "none") +
+  scale_x_continuous(expand=c(0,0), limits = c(0, 410), breaks=c(0,100, 200, 300, 400), 
+                     labels=c('0', '100', '200', '300', '400'))+
+  scale_y_continuous(expand=c(0,0))+
+  labs( x='Fish bathymetric depth (m)', y='Relative density',
+        title='Lake Superior Bloater Depth Distribution',
+        subtitle=' ',
+        caption=ann_data_access) +
+  annotate(geom="text", x=295, y=0.1, label="Sampled depths", size=6, family='serif') +
+  annotate(geom="text", x=390, y=0.12, label="atop(Maximum, depth)", 
+           size=6, family='serif', parse = TRUE) 
+
+ggsave(here('Plots and Tables/RVCAT','bloater_BottomTrawlCaptures.png'), height=20, width=40, dpi=300, units='cm')
+
+##Rainbow Smelt
+ggplot(subset(dfishy1, FISH == "Rainbow Smelt" & trawl == "Bottom trawl")) +
+  aes(x=avgdepth, y = ..scaled.., weight=Fdensity/Fdensity.grp) + 
+  geom_density(alpha=0.4, fill = 'deepskyblue2') +
+  geom_vline(data = subset(dfishy1.sum, FISH == "Rainbow Smelt" & trawl == "Bottom trawl"),
+             aes(xintercept=bdepth.mean), color='black', size=1.2, show.legend = FALSE) +
+  geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
+  geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
+  plot_theme + 
+  theme(legend.position = "none") +
+  scale_x_continuous(expand=c(0,0), limits = c(0, 410), breaks=c(0,100, 200, 300, 400), 
+                     labels=c('0', '100', '200', '300', '400'))+
+  scale_y_continuous(expand=c(0,0))+
+  labs( x='Fish bathymetric depth (m)', y='Relative density',
+        title='Lake Superior Rainbow Smelt Distribution',
+        subtitle='USGS Bottom and Mid-water Trawling, 2011-2020',
+        caption=ann_data_access) +
+  annotate(geom="text", x=295, y=0.1, label="Sampled depths", size=6, family='serif') +
+  annotate(geom="text", x=390, y=0.12, label="atop(Maximum, depth)", 
+           size=6, family='serif', parse = TRUE) 
+
+ggsave(here('Plots and Tables/RVCAT','RBS_BathyDepths.png'), height=20, width=40, dpi=300, units='cm')
 
 #######################################################################################
 ##Single species showing midwater and bottom trawl catches
@@ -3599,7 +4982,7 @@ ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi",
   scale_y_continuous(expand=c(0,0))+
   scale_fill_brewer(palette="Dark2") +
   labs( x='Fish depth of capture (m)', y='Relative density',
-        title='Lake Superior Ciscoe and Rainbow Smelt Depth Distributions',
+        title='Lake Superior Coregonines and Rainbow Smelt Depth Distributions',
         subtitle=' ',
         caption=ann_data_access) +
   facet_grid(.~trawl, scales="free" )
@@ -3627,7 +5010,7 @@ ggplot(subset(dfishy1, FISH == "Kiyi" & trawl == "Bottom trawl")) +
         subtitle=' ',
         caption=ann_data_access) 
 
-ggsave(here('Plots and Tables/RVCAT','kiyi_BottomTrawlCaptures.png'), height=20, width=40, dpi=300, units='cm')
+ggsave(here('Plots and Tables/RVCAT','kiyi_BottomTrawlTemperature.png'), height=20, width=40, dpi=300, units='cm')
 
 ##Multi-species temperature plot
 ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi")), 
@@ -3698,7 +5081,7 @@ ggsave(here('Plots and Tables/RVCAT','cisco_kiyi_cdepths.png'), height=20, width
 ################################################################################################
 ##Ciscoe and RBS bathymetric depth
 
-ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi")), 
+ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi", "Rainbow Smelt")), 
        aes(x=avgdepth, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
   geom_density(alpha=0.4) +
   geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
@@ -3723,6 +5106,7 @@ ggsave(here('Plots and Tables/RVCAT','ciscoe_bathydepths.png'), height=20, width
 
 ###########################################################################################  
 ##Ciscoe and RBS depths of capture
+library(ggtext)
 
 ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi", "Rainbow Smelt")), 
        aes(x=FISHING_DEPTH, y = ..scaled.., weight=Fdensity/Fdensity.grp, group=FISH, fill=FISH)) + 
@@ -3730,21 +5114,29 @@ ggplot(subset(dfishy1, FISH %in% c("Bloater", "Cisco", "Kiyi", "Rainbow Smelt"))
   geom_segment(aes(x=406,xend=406,y=0,yend=0.1), color='black', size=3) +
   geom_segment(aes(x=min(dfishy1$avgdepth), xend=max(dfishy1$avgdepth), y=0.05, yend=0.05), size=3, color='black') +
   plot_theme + 
-  theme(legend.title=element_blank()) +
-  theme(legend.position=c(0.8,0.72)) +
+  theme(legend.title=element_blank(),
+        legend.position=c(0.8,0.72),
+        plot.title.position = "plot",
+        plot.caption.position = "plot",
+        plot.title = element_markdown(size=24, family='serif'), 
+        plot.subtitle = element_markdown(size=24, family='serif'),
+        plot.caption = element_markdown(hjust=0, size=24, family='serif'), 
+        axis.text=element_text(size=24, family='serif'),
+        axis.title=element_text(size=24, family='serif'),
+        legend.text=element_text(size=24, family='serif')) + 
   scale_x_continuous(expand=c(0,0), limits = c(0, 410), breaks=c(0,100, 200, 300, 400), 
                      labels=c('0', '100', '200', '300', '400'))+
   scale_y_continuous(expand=c(0,0))+
   scale_fill_brewer(palette="Dark2") +
   labs( x='Depth of capture (m)', y='Relative density',
-        title='Lake Superior Ciscoe and Rainbow Smelt Depth Distributions',
+        title='Lake Superior Coregonines and Rainbow Smelt Depth Distributions',
         subtitle=' ',
         caption=ann_data_access) +
-  annotate(geom="text", x=295, y=0.1, label="Sampled depths", size=6, family='serif') +
+  annotate(geom="text", x=295, y=0.1, label="Sampled depths", size=8, family='serif') +
   annotate(geom="text", x=390, y=0.12, label="atop(Maximum, depth)", 
-           size=6, family='serif', parse = TRUE) 
+           size=8, family='serif', parse = TRUE) 
 
-ggsave(here('Plots and Tables/RVCAT','ciscoe_RBS_capturedepths.png'), height=20, width=40, dpi=300, units='cm')
+ggsave(here('Plots and Tables/RVCAT','ciscoe_RBS_capturedepths.png'), height=20, width=40, dpi=600, units='cm')
 
 
 ###########################################################################################  
@@ -3847,6 +5239,15 @@ ggplot(subset(dfishy1, FISH %in% c("Ninespine Stickleback", "Trout-Perch")),
            size=6, family='serif', parse = TRUE) 
 
 ggsave(here('Plots and Tables/RVCAT','9spineTP_depths.png'), height=20, width=40, dpi=300, units='cm')
+
+
+########################################################################################
+########################################################################################
+####################################################################################
+
+
+
+
 
 ########################################################################################
 ########################################################################################

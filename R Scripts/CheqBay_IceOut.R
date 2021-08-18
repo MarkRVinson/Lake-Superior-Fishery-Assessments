@@ -50,7 +50,7 @@ ggplot(data, aes(x=year, y=jday)) +
                      limits=c(min(data$year-1),max(data$year+5)))+
   scale_y_continuous(expand=c(0,0),breaks = scales::pretty_breaks(5), 
                      limits=c(min(data$jday-5),max(data$jday+10))) +
-  annotate("text", x=1972, y = 90, label = "Long-term mean is day 111, April 21", size=7, family='serif')
+  annotate("text", x=1972, y = 90, label = "Long-term mean is day 110, April 20", size=7, family='serif')
 
 #  stat_cor(label.x = 1940, label.y = 140, color = "red") +
 #  stat_regline_equation(label.x = 1940, label.y = 135, color = "red") +
@@ -77,7 +77,7 @@ ggplot(data, aes(x=year, y=as.Date(jday, origin = as.Date("2018-01-01")))) +
                      limits=c(min(data$year-1),max(data$year+5))) +
   
   labs(x='Year', y='Ice breakup date', title='Lake Superior Chequamegon Bay Ice Breakup Day',
-              subtitle='Average date is April 21 and is on average occuring four days earlier than 100 years ago', 
+              subtitle='Average ice breakup date is April 20.\nOn average, ice breakup is occurring four days earlier now than 100 years ago', 
               caption='U.S. Geological Survey Lake Superior Biological Station, Ashland, WI\nData: www.sciencebase.gov/catalog/item/5cd07b1ce4b09b8c0b79a358') 
 
 
