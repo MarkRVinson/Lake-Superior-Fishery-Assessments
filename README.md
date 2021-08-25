@@ -1,4 +1,4 @@
-# RVCAT
+# Lake Superior Fishery Assessment Data Analyses
 An R-stats project that contains a suite of data and analysis scripts for summarizing and presenting data from the Research Vessel Catch database (RVCAT, doi.org/10.5066/F75M63X0) for Lake Superior
 <br>
 <br>
