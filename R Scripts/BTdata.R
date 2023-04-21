@@ -22,6 +22,64 @@ library(ggforce)
 library(lubridate)
 library(ggridges)
 library(here)
+library(scales)
+
+
+
+
+###############################################################################################################
+##Get BT temperature data
+
+##load data 
+BTdata1 <- read_excel(here('Data',"LSBS_BTdata.xlsx"), sheet="BTData")
+
+BTdata1 <- BTdata1 %>%
+  select(Sample, Depth, Temperature)
+
+
+BTdata2 <-read_excel(here('Data',"LSBS_BTdata.xlsx"), sheet="BTSample")
+BTdata2$Date<-as.character(BTdata2.data$Date)
+BTdata2$Date<-parse_date(BTdata2$Date, format='%d-%b-%y')
+
+BTdata2 <- BTdata2 %>%
+  select(Sample, Year, Date, 'd<3mT', ChlSurf, 'Chl3m') %>%
+  subset(Year == 2011 |
+           Year == 2016 |
+           Year == 2022) %>%
+  rename(Temperature = 'd<3mT')  %>%
+  mutate(Month = month(Date)) %>%
+  subset(Month >5) %>%
+  subset(Month <11) %>%
+  mutate(Group = case_when(
+    Month == 6 ~ 'June', 
+    Month == 7 ~ 'July', 
+    Month >7 ~ 'Aug/Sep')) 
+
+BTdata2$Group <- factor(BTdata2$Group,
+                        levels = c("June","July","Aug/Sep"))
+
+##ggridges plot with leopard look, median lines inside distribution not very visible
+ggplot(BTdata2, aes(x = Temperature, y = as.factor(Year), fill = ..x..)) +
+  geom_density_ridges_gradient(scale = 1, rel_min_height = 0.01,
+                               quantile_lines  = TRUE, quantiles = 2,    
+                               gradient_lwd = 0, jittered_points = TRUE, point_size = 1)  +
+  scale_fill_viridis(name = "Temperature (C)", option = "C", alpha=0.6) +
+  plot_theme + 
+  theme(axis.text.x=element_text(size=16),
+        legend.position=c(0.37,0.5),
+        legend.title.align = 0.5, 
+        legend.text.align = 0.8, 
+        legend.direction="vertical",
+        legend.text=element_text(size=20, family='serif')) +
+  labs(title = "Lake Superior Near Surface Water Temperatures",
+       subtitle = "USGS bottom trawl assessments",
+       caption=ann_data_access, 
+       y = "Year", x = "Water temperature, <3 m deep (C)") +
+  facet_wrap(~Group, scales = "free_x")
+
+ggsave(here('Plots','CSMI_SurfaceWaterTemp.png'), dpi = 300, width = 40, height = 20, units = "cm")  
+
+
 
 ##load data 
 data1 <- read_excel(here('Data',"LSBS_BTdata.xlsx"), sheet="BTData") %>%
@@ -79,7 +137,8 @@ ann_data_access<-'Data: U.S. Geological Survey, doi.org/10.5066/F75M63X0'
   ggplot(aes(x = Year, y = Depth, color=Temperature)) +
   geom_jitter() +
   scale_y_reverse() +
-  scale_x_discrete(breaks=c(2010,2011,2012,2013,2014,2015,2016,2017,2018,2019)) +
+  scale_x_discrete() +  
+##  scale_x_discrete(breaks=c(2010,2011,2012,2013,2014,2015,2016,2017,2018,2019)) +
   scale_color_gradient(low = "blue", high = "red", "Temperature") +
   labs(title = "Lake Superior Water Temperatures",
        subtitle = "USGS bottom trawl assessments",
@@ -127,6 +186,7 @@ ggplot(Sumdata2, aes(x=mean_T, y=Depth, color =as.factor(Year))) +
   facet_wrap(~Month, scales = "free", labeller = labeller(Month=facet_label))
 
 ggsave(here('Plots and Tables/Ice_Temp','ns_os_wtemps2.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+ggsave(here('Plots and Tables/CSMI','ns_os_wtemps2.png'), dpi = 300, width = 40, height = 20, units = "cm") 
 
 ##Summary Min, Max, Mean Temps for Report
 Sumdata3 <-Sumdata1 %>%
@@ -136,6 +196,48 @@ Sumdata3 <-Sumdata1 %>%
 Sumdata4 <-Sumdata1 %>%
   group_by(Year, Month, Depth)%>%
   summarize(mean=mean(Temperature),min=min(Temperature),max=max(Temperature))
+
+
+###Mean Temperature at Depth Plot for a specific month and year
+###Standard temperature at Depth plot
+#####
+facet_label <- c(June = "June - Nearshore Assessment" , July = "July - Offshore Assessment") 
+
+Sumdata2 <-aggregate(Sumdata1$Temperature, by=list(Year=Sumdata1$Year, Month=Sumdata1$Month, Depth=Sumdata1$Depth), FUN=mean)%>%
+  renameCol('x','mean_T')
+Sumdata2$Year<-as.numeric(as.character(Sumdata2$Year))
+Sumdata2<-subset(Sumdata2, Year>=(max(Year)-5))
+
+Sumdata3 <-aggregate(Sumdata1$Temperature, by=list(Month=Sumdata1$Month, Depth=Sumdata1$Depth), FUN=mean)%>%
+  renameCol('x','mean_T')
+Sumdata3$Common<-'Mean'
+
+###Select Year and Month
+Sumdata4 <- data1 %>%
+  select(Sample, Depth, Temperature, Port, Date, Year, Month) %>%
+  unite("legend", Port, Date, sep=", ", remove = FALSE) %>%
+  subset(Year == 2021 & Month == 'October' & Port >3000 ) 
+
+
+ggplot(Sumdata4, aes(x=Temperature, y=Depth, color = legend)) +
+#  geom_point() +
+  geom_path(size = 1) +
+  scale_y_reverse(breaks = pretty_breaks()) +
+  scale_x_continuous(breaks = pretty_breaks())+
+  labs(title = "Lake Superior Water Temperatures",
+       subtitle = "USGS bottom trawl assessments",
+       caption = ann_data_access,
+       y = "Depth (m)", 
+       x = "Water temperature (C)") +
+  plot_theme + 
+  theme(legend.position=c(0.8,0.5), 
+        legend.key = element_blank()) +
+  scale_colour_discrete("Ports, Dates")
+  scale_fill_brewer(palette="Accent") 
+
+ggsave(here('Plots and Tables/Ice_Temp','Mysis_2021.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
+
 
 
 ###################################################################################
@@ -171,6 +273,8 @@ ggplot(Sumdata2, aes(x = Temperature, y = Year, fill = ..x..)) +
   facet_wrap(~Month, scales = "free_x", labeller = labeller(Month=facet_label)) 
 
 ggsave(here('Plots and Tables/Ice_Temp','ns_os_wtemps3a.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+ggsave(here('Plots and Tables/CSMI','ns_os_wtemps3a.png'), dpi = 300, width = 40, height = 20, units = "cm") 
+
 
 ##ggridges plot with points below distribution, red lines are 10 year median & 1st, 2nd, 3rd quartiles in individual years
 ggplot(Sumdata2, aes(x = Temperature, y = Year, fill = ..x..)) +

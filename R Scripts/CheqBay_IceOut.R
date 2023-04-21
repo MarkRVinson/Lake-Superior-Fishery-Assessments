@@ -25,11 +25,11 @@ plot_theme<-theme(axis.line=element_line(size=1, color='black'),
 
 ##load the raw data file
 data<-read.csv(here('Data','ChequamegonBay_IceOut.csv')) 
-  data$Date<-as.character(data$Date)
-  data$Date <-  parse_date(data$Date, format='%m/%d/%Y') 
+  data$LSBS.Date<-as.character(data$LSBS.Date)
+  data$LSBS.Date <-  parse_date(data$LSBS.Date, format='%m/%d/%Y') 
 
 data<- data %>%
-  mutate(year = year(Date), jday = yday(Date)) 
+  mutate(year = year(LSBS.Date), jday = yday(LSBS.Date)) 
 
 ###################################
 my.formula <- y ~ x
@@ -85,9 +85,34 @@ ggplot(data, aes(x=year, y=as.Date(jday, origin = as.Date("2018-01-01")))) +
   ##             aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
   ##             color = "red", size=7, family='serif', parse = TRUE) +
 
- ## annotate("text", x=1972, y = mean(as.Date(jday, origin = as.Date("2018-01-01")), 
+ ## annotate("text", x=1972, y = mean(as.LSBS.Date(jday, origin = as.LSBS.Date("2018-01-01")), 
   ##         label = "Long-term mean is day 111, April 21", size=7, family='serif'))
 
 ggsave(here('Plots and Tables/Ice_Temp','CheqBay_IceOut2.png'), dpi = 300, width = 30, height = 15, units = "cm") 
 
+
+
+###Ice breakup in comparison to Punxsutawney Phil
+data.phil <- data %>%
+  mutate_all(~ifelse(. %in% c("N/A", "null", ""), NA, .)) %>% 
+  na.omit()
+  
+data.phil.sum <- data.phil %>%
+  group_by(Punxsutawney.Phil) %>%
+  summarise(mean=mean(jday))
+  
+ggplot(data.phil, aes(x=Punxsutawney.Phil, y=as.Date(jday, origin = as.Date("2018-01-01"))))  +
+  geom_boxplot() +
+  geom_jitter() +
+  scale_y_date(date_labels = "%b %e") +
+  plot_theme +
+  theme(plot.subtitle=element_text(size=16, family='serif')) + 
+  labs(x='Punxsutawney Phil prediction', 
+       y='Ice breakup day', 
+       title='Lake Superior Chequamegon Bay Ice Breakup Day',
+       subtitle='Long winter or early spring designation based on Punxsutawney Phil seeing or not seeing his shadow, respectively', 
+       caption='U.S. Geological Survey Lake Superior Biological Station, Ashland, WI\nData: www.sciencebase.gov/catalog/item/5cd07b1ce4b09b8c0b79a358\nhttps://en.wikipedia.org/wiki/Punxsutawney_Phil') 
+
+
+ggsave(here('Plots and Tables/Ice_Temp','CheqBay_Phil.IceOut.png'), dpi = 300, width = 30, height = 15, units = "cm") 
 
